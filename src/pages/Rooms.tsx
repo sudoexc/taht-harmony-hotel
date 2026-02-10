@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useData } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -11,14 +13,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Pencil, Search } from "lucide-react";
-import { mockRooms } from "@/data/mockData";
 import { formatCurrency } from "@/lib/format";
 import { Room, RoomType } from "@/types";
 
 const Rooms = () => {
-  const { t } = useLanguage();
-  const [rooms, setRooms] = useState<Room[]>(mockRooms);
+  const { t, language } = useLanguage();
+  const { rooms, addRoom, updateRoom } = useData();
+  const { hotelId } = useAuth();
+  const locale = language === 'uz' ? 'uz-UZ' : 'ru-RU';
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortKey, setSortKey] = useState("roomAsc");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
 
@@ -30,9 +35,34 @@ const Rooms = () => {
   const [formActive, setFormActive] = useState(true);
   const [formNotes, setFormNotes] = useState("");
 
-  const filteredRooms = rooms.filter(r =>
-    r.number.includes(search) || (r.notes || '').toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredRooms = rooms
+    .filter((room) => {
+      if (statusFilter === 'active' && !room.active) return false;
+      if (statusFilter === 'inactive' && room.active) return false;
+      const query = search.trim().toLowerCase();
+      if (!query) return true;
+      return (
+        room.number.toLowerCase().includes(query) ||
+        (room.notes || '').toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => {
+      switch (sortKey) {
+        case 'roomDesc':
+          return b.number.localeCompare(a.number, 'en', { numeric: true });
+        case 'priceAsc':
+          return a.base_price - b.base_price;
+        case 'priceDesc':
+          return b.base_price - a.base_price;
+        case 'floorAsc':
+          return a.floor - b.floor;
+        case 'floorDesc':
+          return b.floor - a.floor;
+        case 'roomAsc':
+        default:
+          return a.number.localeCompare(b.number, 'en', { numeric: true });
+      }
+    });
 
   const openAdd = () => {
     setEditingRoom(null);
@@ -53,7 +83,7 @@ const Rooms = () => {
   const handleSave = () => {
     const roomData: Room = {
       id: editingRoom?.id || `room-${Date.now()}`,
-      hotel_id: 'taht-hotel-001',
+      hotel_id: hotelId || '',
       number: formNumber,
       floor: parseInt(formFloor),
       room_type: formType,
@@ -63,9 +93,9 @@ const Rooms = () => {
       notes: formNotes || null,
     };
     if (editingRoom) {
-      setRooms(rooms.map(r => r.id === editingRoom.id ? roomData : r));
+      updateRoom(roomData);
     } else {
-      setRooms([...rooms, roomData]);
+      addRoom(roomData);
     }
     setDialogOpen(false);
   };
@@ -77,9 +107,30 @@ const Rooms = () => {
         <Button onClick={openAdd}><Plus className="mr-1 h-4 w-4" />{t.rooms.addRoom}</Button>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input placeholder={t.common.search} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+      <div className="flex flex-wrap gap-3">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder={t.common.search} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t.common.all}</SelectItem>
+            <SelectItem value="active">{t.rooms.active}</SelectItem>
+            <SelectItem value="inactive">{t.rooms.inactive}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortKey} onValueChange={setSortKey}>
+          <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.common.sort} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="roomAsc">{t.sorting.roomAsc}</SelectItem>
+            <SelectItem value="roomDesc">{t.sorting.roomDesc}</SelectItem>
+            <SelectItem value="floorAsc">{t.sorting.floorAsc}</SelectItem>
+            <SelectItem value="floorDesc">{t.sorting.floorDesc}</SelectItem>
+            <SelectItem value="priceAsc">{t.sorting.priceAsc}</SelectItem>
+            <SelectItem value="priceDesc">{t.sorting.priceDesc}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>
@@ -104,7 +155,7 @@ const Rooms = () => {
                   <TableCell>{t.roomType[room.room_type]}</TableCell>
                   <TableCell>{room.floor}</TableCell>
                   <TableCell>{room.capacity} {t.rooms.beds}</TableCell>
-                  <TableCell>{formatCurrency(room.base_price)}</TableCell>
+                  <TableCell>{formatCurrency(room.base_price, locale, t.common.currency)}</TableCell>
                   <TableCell>
                     <Badge variant={room.active ? "default" : "secondary"}>
                       {room.active ? t.rooms.active : t.rooms.inactive}
@@ -112,7 +163,7 @@ const Rooms = () => {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{room.notes}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(room)}>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(room)} aria-label={t.common.edit}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                   </TableCell>

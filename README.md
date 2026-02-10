@@ -60,6 +60,62 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Custom Backend (NestJS + Prisma)
+
+This repo now includes a standalone backend in `server/`.
+
+### 1) Configure environment
+
+Backend env (copy and edit):
+
+```sh
+cp server/.env.example server/.env
+```
+
+Frontend env (create `.env` in project root):
+
+```sh
+VITE_API_URL=http://localhost:4000
+```
+
+### 2) Prepare database
+
+From `server/`:
+
+```sh
+npm install
+npx prisma generate
+npx prisma migrate dev
+```
+
+### 3) Run backend
+
+```sh
+cd server
+npm run dev
+```
+
+### 3a) Create the first admin (one-time)
+
+Registration is only allowed when no users exist (or when `ALLOW_REGISTER=true`).
+
+Example request:
+
+```sh
+curl -X POST http://localhost:4000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{\"email\":\"admin@example.com\",\"password\":\"changeme\",\"full_name\":\"Admin\",\"hotel_name\":\"My Hotel\",\"timezone\":\"Asia/Tashkent\"}'
+```
+
+### 4) Run frontend
+
+From project root:
+
+```sh
+npm install
+npm run dev
+```
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.

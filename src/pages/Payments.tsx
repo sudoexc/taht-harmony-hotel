@@ -1,26 +1,162 @@
+import { useCallback, useMemo, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useData } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { useMonthLock } from "@/hooks/useMonthLock";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { mockStays, mockRooms, mockPayments } from "@/data/mockData";
-import { formatCurrency } from "@/lib/format";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Plus, Pencil, Search } from "lucide-react";
+import { formatCurrency, formatDate, dateStr } from "@/lib/format";
+import { Payment, PaymentMethod } from "@/types";
 
 const Payments = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { rooms, stays, payments, addPayment, updatePayment } = useData();
+  const { hotelId, isAdmin } = useAuth();
+  const { isDateLocked } = useMonthLock();
+  const locale = language === "uz" ? "uz-UZ" : "ru-RU";
 
-  const getInfo = (stayId: string) => {
-    const stay = mockStays.find(s => s.id === stayId);
-    const room = stay ? mockRooms.find(r => r.id === stay.room_id) : null;
-    return { roomNumber: room?.number || '?', guestName: stay?.guest_name || '?' };
+  const [search, setSearch] = useState("");
+  const [methodFilter, setMethodFilter] = useState("all");
+  const [sortKey, setSortKey] = useState("dateDesc");
+
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
+  const [formStayId, setFormStayId] = useState("");
+  const [formDate, setFormDate] = useState("");
+  const [formMethod, setFormMethod] = useState<PaymentMethod>("CASH");
+  const [formAmount, setFormAmount] = useState("");
+  const [formComment, setFormComment] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const getInfo = useCallback((stayId: string) => {
+    const stay = stays.find((s) => s.id === stayId);
+    const room = stay ? rooms.find((r) => r.id === stay.room_id) : null;
+    return { roomNumber: room?.number || "?", guestName: stay?.guest_name || "?" };
+  }, [rooms, stays]);
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return payments
+      .filter((payment) => {
+        if (methodFilter !== "all" && payment.method !== methodFilter) return false;
+        if (!query) return true;
+        const info = getInfo(payment.stay_id);
+        return (
+          info.guestName.toLowerCase().includes(query) ||
+          info.roomNumber.toLowerCase().includes(query) ||
+          (payment.comment || "").toLowerCase().includes(query)
+        );
+      })
+      .sort((a, b) => {
+        switch (sortKey) {
+          case "amountAsc":
+            return a.amount - b.amount;
+          case "amountDesc":
+            return b.amount - a.amount;
+          case "dateAsc":
+            return a.paid_at.localeCompare(b.paid_at);
+          case "dateDesc":
+          default:
+            return b.paid_at.localeCompare(a.paid_at);
+        }
+      });
+  }, [payments, methodFilter, search, sortKey, getInfo]);
+
+  const openAdd = () => {
+    setEditingPayment(null);
+    setFormStayId(stays[0]?.id || "");
+    setFormDate(dateStr(new Date()));
+    setFormMethod("CASH");
+    setFormAmount("");
+    setFormComment("");
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (payment: Payment) => {
+    setEditingPayment(payment);
+    setFormStayId(payment.stay_id);
+    setFormDate(payment.paid_at.split("T")[0]);
+    setFormMethod(payment.method);
+    setFormAmount(String(payment.amount));
+    setFormComment(payment.comment || "");
+    setFormError(null);
+    setDialogOpen(true);
+  };
+
+  const paymentLocked = editingPayment ? isDateLocked(editingPayment.paid_at) : isDateLocked(formDate);
+
+  const handleSave = () => {
+    const amount = Number(formAmount);
+    if (!formStayId || !formDate) {
+      setFormError(t.validation.required);
+      return;
+    }
+    if (!amount || amount <= 0) {
+      setFormError(t.validation.amountPositive);
+      return;
+    }
+    if (paymentLocked && !isAdmin) {
+      setFormError(t.validation.closedMonthEdit);
+      return;
+    }
+
+    const payload: Payment = {
+      id: editingPayment?.id || `pay-${Date.now()}`,
+      hotel_id: hotelId || "",
+      stay_id: formStayId,
+      paid_at: new Date(`${formDate}T12:00:00Z`).toISOString(),
+      method: formMethod,
+      amount,
+      comment: formComment,
+    };
+
+    if (editingPayment) {
+      updatePayment(payload);
+    } else {
+      addPayment(payload);
+    }
+    setDialogOpen(false);
   };
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t.payments.title}</h1>
-        <Button><Plus className="mr-1 h-4 w-4" />{t.payments.addPayment}</Button>
+        <Button onClick={openAdd}><Plus className="mr-1 h-4 w-4" />{t.payments.addPayment}</Button>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder={t.common.search} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        <Select value={methodFilter} onValueChange={setMethodFilter}>
+          <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{t.common.all}</SelectItem>
+            <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
+            <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
+            <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
+            <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortKey} onValueChange={setSortKey}>
+          <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.common.sort} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="dateDesc">{t.sorting.dateDesc}</SelectItem>
+            <SelectItem value="dateAsc">{t.sorting.dateAsc}</SelectItem>
+            <SelectItem value="amountDesc">{t.sorting.amountDesc}</SelectItem>
+            <SelectItem value="amountAsc">{t.sorting.amountAsc}</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <Card>
@@ -34,21 +170,28 @@ const Payments = () => {
                 <TableHead>{t.payments.amount}</TableHead>
                 <TableHead>{t.payments.method}</TableHead>
                 <TableHead>{t.payments.comment}</TableHead>
+                <TableHead>{t.common.actions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {mockPayments.map(payment => {
+              {filtered.map((payment) => {
                 const info = getInfo(payment.stay_id);
+                const locked = isDateLocked(payment.paid_at);
                 return (
                   <TableRow key={payment.id}>
-                    <TableCell>{new Date(payment.paid_at).toLocaleDateString()}</TableCell>
+                    <TableCell>{formatDate(payment.paid_at, locale)}</TableCell>
                     <TableCell className="font-medium">#{info.roomNumber}</TableCell>
                     <TableCell>{info.guestName}</TableCell>
-                    <TableCell className="font-medium">{formatCurrency(payment.amount)}</TableCell>
+                    <TableCell className="font-medium">{formatCurrency(payment.amount, locale, t.common.currency)}</TableCell>
                     <TableCell>
                       <Badge variant="outline">{t.paymentMethod[payment.method]}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{payment.comment}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(payment)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -56,6 +199,65 @@ const Payments = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingPayment ? t.payments.editPayment : t.payments.addPayment}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>{t.payments.stay}</Label>
+              <Select value={formStayId} onValueChange={setFormStayId}>
+                <SelectTrigger disabled={paymentLocked && !isAdmin}><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {stays.map((stay) => (
+                    <SelectItem key={stay.id} value={stay.id}>
+                      #{getInfo(stay.id).roomNumber} · {stay.guest_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t.payments.date}</Label>
+                <Input type="date" value={formDate} onChange={(e) => setFormDate(e.target.value)} disabled={paymentLocked && !isAdmin} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t.payments.method}</Label>
+                <Select value={formMethod} onValueChange={(v) => setFormMethod(v as PaymentMethod)}>
+                  <SelectTrigger disabled={paymentLocked && !isAdmin}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
+                    <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
+                    <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
+                    <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t.payments.amount}</Label>
+              <Input type="number" value={formAmount} onChange={(e) => setFormAmount(e.target.value)} disabled={paymentLocked && !isAdmin} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.payments.comment}</Label>
+              <Input value={formComment} onChange={(e) => setFormComment(e.target.value)} disabled={paymentLocked && !isAdmin} />
+            </div>
+            {paymentLocked && !isAdmin && (
+              <div className="text-sm text-warning">{t.validation.closedMonthEdit}</div>
+            )}
+            {formError && (
+              <div className="text-sm text-destructive">{formError}</div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t.common.cancel}</Button>
+            <Button onClick={handleSave} disabled={paymentLocked && !isAdmin}>{t.common.save}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,13 +1,72 @@
+import { useEffect, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useData } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { UserRole } from "@/types";
 
 const Settings = () => {
   const { t } = useLanguage();
+  const { hotel, setHotel, users, addUser, updateUserRole } = useData();
+  const { role, isAdmin } = useAuth();
+  const [hotelName, setHotelName] = useState(hotel.name);
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [userPassword, setUserPassword] = useState("");
+  const [userFullName, setUserFullName] = useState("");
+  const [userRole, setUserRole] = useState<UserRole>("MANAGER");
+  const [userError, setUserError] = useState<string | null>(null);
+  const [userSubmitting, setUserSubmitting] = useState(false);
+
+  useEffect(() => {
+    setHotelName(hotel.name);
+  }, [hotel.name]);
+
+  const resetUserForm = () => {
+    setUserEmail("");
+    setUserPassword("");
+    setUserFullName("");
+    setUserRole("MANAGER");
+    setUserError(null);
+  };
+
+  const handleCreateUser = async () => {
+    if (!userEmail || !userPassword || !userFullName) {
+      setUserError(t.validation.required);
+      return;
+    }
+    const emailOk = /\S+@\S+\.\S+/.test(userEmail);
+    if (!emailOk) {
+      setUserError(t.validation.invalidEmail);
+      return;
+    }
+    if (userPassword.length < 6) {
+      setUserError(t.validation.passwordMin);
+      return;
+    }
+    setUserSubmitting(true);
+    try {
+      await addUser({
+        email: userEmail,
+        password: userPassword,
+        full_name: userFullName,
+        role: userRole,
+      });
+      resetUserForm();
+      setUserDialogOpen(false);
+    } catch {
+      setUserError(t.validation.userCreateFailed);
+    } finally {
+      setUserSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -19,40 +78,116 @@ const Settings = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{t.settings.hotelName}</Label>
-              <Input defaultValue="Taht" />
+              <Input value={hotelName} onChange={(e) => setHotelName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>{t.settings.timezone}</Label>
-              <Input defaultValue="Asia/Tashkent" disabled />
+              <Input value={hotel.timezone} disabled />
             </div>
           </div>
-          <Button>{t.common.save}</Button>
+          <Button onClick={() => setHotel({ ...hotel, name: hotelName })}>{t.common.save}</Button>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader className="pb-3"><CardTitle>{t.settings.users}</CardTitle></CardHeader>
+        <CardHeader className="pb-3"><CardTitle>{t.settings.currentRole}</CardTitle></CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.settings.fullName}</TableHead>
-                <TableHead>{t.settings.role}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow>
-                <TableCell>Admin User</TableCell>
-                <TableCell><Badge>ADMIN</Badge></TableCell>
-              </TableRow>
-              <TableRow>
-                <TableCell>Manager User</TableCell>
-                <TableCell><Badge variant="secondary">MANAGER</Badge></TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+          <Badge variant={role === 'ADMIN' ? 'default' : 'secondary'}>
+            {role ? t.roles[role] : t.roles.MANAGER}
+          </Badge>
         </CardContent>
       </Card>
+
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+            <CardTitle>{t.settings.users}</CardTitle>
+            <Button size="sm" onClick={() => { resetUserForm(); setUserDialogOpen(true); }}>
+              {t.settings.addUser}
+            </Button>
+          </CardHeader>
+          <CardContent>
+            {users.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t.common.noData}</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t.settings.fullName}</TableHead>
+                    <TableHead>{t.settings.email}</TableHead>
+                    <TableHead>{t.settings.role}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((profile) => (
+                    <TableRow key={profile.id}>
+                      <TableCell>{profile.full_name}</TableCell>
+                      <TableCell className="text-muted-foreground">{profile.email}</TableCell>
+                      <TableCell>
+                        <Select
+                          value={profile.role}
+                          onValueChange={(value) => {
+                            updateUserRole(profile.id, value as UserRole).catch(() => {
+                              setUserError(t.validation.userRoleFailed);
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ADMIN">{t.roles.ADMIN}</SelectItem>
+                            <SelectItem value="MANAGER">{t.roles.MANAGER}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.settings.addUser}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>{t.settings.fullName}</Label>
+              <Input value={userFullName} onChange={(e) => setUserFullName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.settings.email}</Label>
+              <Input type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.settings.password}</Label>
+              <Input type="password" value={userPassword} onChange={(e) => setUserPassword(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.settings.role}</Label>
+              <Select value={userRole} onValueChange={(v) => setUserRole(v as UserRole)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ADMIN">{t.roles.ADMIN}</SelectItem>
+                  <SelectItem value="MANAGER">{t.roles.MANAGER}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {userError && (
+              <div className="text-sm text-destructive">{userError}</div>
+            )}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setUserDialogOpen(false)}>{t.common.cancel}</Button>
+            <Button onClick={handleCreateUser} disabled={userSubmitting}>{t.common.save}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -4,9 +4,13 @@ import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
+  const { t } = useLanguage();
+  const { user, signOut } = useAuth();
 
   return (
     <SidebarProvider>
@@ -14,9 +18,15 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-14 border-b flex items-center justify-between px-4 shrink-0">
-            <SidebarTrigger />
+            <SidebarTrigger aria-label={t.common.toggleSidebar} title={t.common.toggleSidebar} />
             <div className="flex items-center gap-3">
+              {user?.email && (
+                <span className="text-xs text-muted-foreground">{user.email}</span>
+              )}
               <LanguageSwitcher />
+              <Button variant="ghost" size="sm" onClick={signOut}>
+                {t.auth.signOut}
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

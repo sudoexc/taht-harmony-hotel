@@ -4,6 +4,21 @@ export type PaymentMethod = 'CASH' | 'CARD' | 'PAYME' | 'CLICK';
 export type ExpenseCategory = 'SALARY' | 'INVENTORY' | 'UTILITIES' | 'REPAIR' | 'MARKETING' | 'OTHER';
 export type UserRole = 'ADMIN' | 'MANAGER';
 
+export type RevenueByMethod = Record<PaymentMethod, number>;
+export type ExpensesByCategory = Record<ExpenseCategory, number>;
+
+export interface TotalsSnapshot {
+  revenue_by_method: RevenueByMethod;
+  expenses_by_category: ExpensesByCategory;
+  profit: number;
+  occupancy_rate: number;
+  adr: number;
+  revpar: number;
+  sold_nights: number;
+  available_nights: number;
+  total_room_revenue: number;
+}
+
 export interface Hotel {
   id: string;
   name: string;
@@ -64,4 +79,19 @@ export interface Profile {
   hotel_id: string;
   role: UserRole;
   full_name: string;
+}
+
+export interface UserWithRole {
+  id: string;
+  full_name: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface MonthClosing {
+  id: string;
+  hotel_id: string;
+  month: string; // YYYY-MM
+  closed_at: string;
+  totals_json: TotalsSnapshot | null;
 }

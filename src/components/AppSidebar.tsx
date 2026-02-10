@@ -1,6 +1,7 @@
 import { LayoutDashboard, BedDouble, CalendarDays, CreditCard, Receipt, BarChart3, Settings } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useData } from "@/contexts/DataContext";
 import {
   Sidebar,
   SidebarContent,
@@ -13,6 +14,7 @@ import {
 
 export function AppSidebar() {
   const { t } = useLanguage();
+  const { hotel } = useData();
 
   const items = [
     { title: t.nav.dashboard, url: "/", icon: LayoutDashboard },
@@ -27,8 +29,8 @@ export function AppSidebar() {
   return (
     <Sidebar>
       <div className="p-5 border-b border-sidebar-border">
-        <h2 className="text-lg font-bold tracking-tight">Taht</h2>
-        <p className="text-xs text-sidebar-foreground/60">Hotel Management</p>
+        <h2 className="text-lg font-bold tracking-tight">{hotel.name || t.app.name}</h2>
+        <p className="text-xs text-sidebar-foreground/60">{t.app.description}</p>
       </div>
       <SidebarContent>
         <SidebarGroup>

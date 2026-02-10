@@ -1,29 +1,31 @@
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useData } from "@/contexts/DataContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LogIn, LogOut, BedDouble, DoorOpen, Plus } from "lucide-react";
-import { mockRooms, mockStays, mockPayments } from "@/data/mockData";
-import { formatCurrency, getNights, getStayTotal, dateStr } from "@/lib/format";
+import { formatCurrency, formatDate, getStayTotal, dateStr } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const { rooms, stays, payments } = useData();
   const navigate = useNavigate();
   const today = new Date();
   const todayStr = dateStr(today);
+  const locale = language === 'uz' ? 'uz-UZ' : 'ru-RU';
 
-  const todayCheckIns = mockStays.filter(s => s.check_in_date === todayStr && ['BOOKED', 'CHECKED_IN'].includes(s.status));
-  const todayCheckOuts = mockStays.filter(s => s.check_out_date === todayStr && ['CHECKED_IN', 'BOOKED'].includes(s.status));
+  const todayCheckIns = stays.filter(s => s.check_in_date === todayStr && s.status !== 'CANCELLED');
+  const todayCheckOuts = stays.filter(s => s.check_out_date === todayStr && s.status !== 'CANCELLED');
 
   const occupiedRoomIds = new Set(
-    mockStays
-      .filter(s => s.check_in_date <= todayStr && s.check_out_date > todayStr && ['CHECKED_IN', 'BOOKED'].includes(s.status))
+    stays
+      .filter(s => s.check_in_date <= todayStr && s.check_out_date > todayStr && s.status !== 'CANCELLED')
       .map(s => s.room_id)
   );
 
-  const activeRooms = mockRooms.filter(r => r.active);
+  const activeRooms = rooms.filter(r => r.active);
 
   const getRoomStatus = (roomId: string) => {
     if (todayCheckOuts.some(s => s.room_id === roomId)) return 'checkOutToday';
@@ -47,7 +49,7 @@ const Dashboard = () => {
   };
 
   const getStayPaid = (stayId: string) =>
-    mockPayments.filter(p => p.stay_id === stayId).reduce((s, p) => s + p.amount, 0);
+    payments.filter(p => p.stay_id === stayId).reduce((s, p) => s + p.amount, 0);
 
   const stats = [
     { label: t.dashboard.checkInsToday, value: todayCheckIns.length, icon: LogIn, color: 'text-info' },
@@ -61,7 +63,7 @@ const Dashboard = () => {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t.dashboard.title}</h1>
-          <p className="text-sm text-muted-foreground">{t.dashboard.today}: {todayStr}</p>
+          <p className="text-sm text-muted-foreground">{t.dashboard.today}: {formatDate(todayStr, locale)}</p>
         </div>
         <div className="flex gap-2">
           <Button size="sm" onClick={() => navigate('/stays')}><Plus className="mr-1 h-4 w-4" />{t.dashboard.addStay}</Button>
@@ -92,9 +94,9 @@ const Dashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {activeRooms.map(room => {
               const status = getRoomStatus(room.id);
-              const guest = mockStays.find(s =>
+              const guest = stays.find(s =>
                 s.room_id === room.id && s.check_in_date <= todayStr && s.check_out_date > todayStr &&
-                ['CHECKED_IN', 'BOOKED'].includes(s.status)
+                s.status !== 'CANCELLED'
               );
               return (
                 <div key={room.id} className={`p-3 rounded-lg border ${statusColors[status]}`}>
@@ -136,7 +138,7 @@ const Dashboard = () => {
                 <TableBody>
                   {todayCheckIns.map(stay => (
                     <TableRow key={stay.id}>
-                      <TableCell className="font-medium">#{mockRooms.find(r => r.id === stay.room_id)?.number}</TableCell>
+                      <TableCell className="font-medium">#{rooms.find(r => r.id === stay.room_id)?.number}</TableCell>
                       <TableCell>{stay.guest_name}</TableCell>
                       <TableCell>{stay.check_out_date}</TableCell>
                       <TableCell>
@@ -174,15 +176,15 @@ const Dashboard = () => {
                     const due = total - paid;
                     return (
                       <TableRow key={stay.id}>
-                        <TableCell className="font-medium">#{mockRooms.find(r => r.id === stay.room_id)?.number}</TableCell>
-                        <TableCell>{stay.guest_name}</TableCell>
-                        <TableCell>{formatCurrency(total)}</TableCell>
-                        <TableCell className={due > 0 ? 'text-destructive font-medium' : 'text-success'}>
-                          {formatCurrency(due)}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                      <TableCell className="font-medium">#{rooms.find(r => r.id === stay.room_id)?.number}</TableCell>
+                      <TableCell>{stay.guest_name}</TableCell>
+                      <TableCell>{formatCurrency(total, locale, t.common.currency)}</TableCell>
+                      <TableCell className={due > 0 ? 'text-destructive font-medium' : 'text-success'}>
+                        {formatCurrency(due, locale, t.common.currency)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
                 </TableBody>
               </Table>
             )}

@@ -1,9 +1,16 @@
-import { Room, Stay, Payment, Expense } from '@/types';
+import { Room, Stay, Payment, Expense, Hotel, MonthClosing, Profile } from '@/types';
 import { dateStr, addDays } from '@/lib/format';
 
 const HOTEL_ID = 'taht-hotel-001';
 const today = new Date();
 const td = dateStr(today);
+
+export const mockHotel: Hotel = {
+  id: HOTEL_ID,
+  name: 'Taht',
+  timezone: 'Asia/Tashkent',
+  created_at: today.toISOString(),
+};
 
 export const mockRooms: Room[] = [
   { id: 'room-1', hotel_id: HOTEL_ID, number: '1', floor: 1, room_type: 'STANDARD', capacity: 3, base_price: 450000, active: true, notes: 'Own bathroom' },
@@ -39,4 +46,11 @@ export const mockExpenses: Expense[] = [
   { id: 'exp-2', hotel_id: HOTEL_ID, spent_at: addDays(today, -1).toISOString(), category: 'INVENTORY', method: 'CASH', amount: 200000, comment: 'Towels' },
   { id: 'exp-3', hotel_id: HOTEL_ID, spent_at: addDays(today, -5).toISOString(), category: 'SALARY', method: 'CARD', amount: 3000000, comment: 'Staff salary' },
   { id: 'exp-4', hotel_id: HOTEL_ID, spent_at: today.toISOString(), category: 'REPAIR', method: 'CASH', amount: 150000, comment: 'Plumbing fix' },
+];
+
+export const mockMonthClosings: MonthClosing[] = [];
+
+export const mockProfiles: Profile[] = [
+  { id: 'user-admin', hotel_id: HOTEL_ID, role: 'ADMIN', full_name: 'Admin User' },
+  { id: 'user-manager', hotel_id: HOTEL_ID, role: 'MANAGER', full_name: 'Manager User' },
 ];
