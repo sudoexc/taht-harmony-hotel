@@ -1,6 +1,7 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { RequestWithUser } from '../types.js';
 
@@ -37,20 +38,26 @@ export class AuditInterceptor implements NestInterceptor {
     const path = request.originalUrl || request.url;
     const body = this.sanitize(request.body);
     const params = request.params;
+    const rawEntityId = params?.id;
+    const entityId = Array.isArray(rawEntityId) ? rawEntityId[0] : rawEntityId;
+    const payload = body === undefined ? undefined : body === null ? Prisma.DbNull : (body as Prisma.InputJsonValue);
 
     return next.handle().pipe(
       tap(async (result) => {
         if (!user) return;
         try {
+          const sanitizedResult = this.sanitize(result);
+          const resultPayload =
+            sanitizedResult === undefined ? undefined : sanitizedResult === null ? Prisma.DbNull : (sanitizedResult as Prisma.InputJsonValue);
           await this.prisma.auditLog.create({
             data: {
               hotelId: user.hotelId,
               userId: user.userId,
               action: method,
               entity: path.split('?')[0],
-              entityId: params?.id || null,
-              payload: body ?? null,
-              result: this.sanitize(result) ?? null,
+              entityId: entityId || null,
+              payload,
+              result: resultPayload,
             },
           });
         } catch {

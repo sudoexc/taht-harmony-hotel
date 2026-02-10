@@ -9,6 +9,31 @@ const parseDateParts = (value: string) => {
   return { y, m, d };
 };
 
+const formatPartsToDateStr = (parts: Intl.DateTimeFormatPart[]): string => {
+  const map = parts.reduce<Record<string, string>>((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  if (!map.year || !map.month || !map.day) return '';
+  return `${map.year}-${map.month}-${map.day}`;
+};
+
+export const dateStrInTimeZone = (date: Date, timeZone: string): string => {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatPartsToDateStr(formatter.formatToParts(date));
+};
+
+export const getTodayInTimeZone = (timeZone?: string): string => {
+  const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const tz = timeZone || fallback;
+  return dateStrInTimeZone(new Date(), tz);
+};
+
 export const formatCurrency = (amount: number, locale = 'ru-RU', currencyLabel = 'UZS'): string => {
   return new Intl.NumberFormat(locale).format(amount) + ` ${currencyLabel}`;
 };
@@ -26,6 +51,24 @@ export const toDayNumber = (value: string): number => {
   const parts = parseDateParts(value);
   if (!parts) return NaN;
   return Math.floor(Date.UTC(parts.y, parts.m - 1, parts.d) / MS_PER_DAY);
+};
+
+export const dayNumberToDateStr = (day: number): string => {
+  if (!Number.isFinite(day)) return '';
+  const date = new Date(day * MS_PER_DAY);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatPartsToDateStr(formatter.formatToParts(date));
+};
+
+export const shiftDateStr = (value: string, days: number): string => {
+  const base = toDayNumber(value);
+  if (!Number.isFinite(base)) return value;
+  return dayNumberToDateStr(base + days);
 };
 
 export const getNights = (checkIn: string, checkOut: string): number => {
@@ -91,6 +134,16 @@ export const getMonthRange = (monthKey: string): { start: string; end: string } 
 export const getPreviousMonthKey = (value: Date = new Date()): string => {
   const y = value.getFullYear();
   const m = value.getMonth() + 1;
+  const prevMonth = m === 1 ? 12 : m - 1;
+  const prevYear = m === 1 ? y - 1 : y;
+  return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+};
+
+export const getPreviousMonthKeyFromMonthKey = (monthKey: string): string => {
+  const [yRaw, mRaw] = monthKey.split('-').map(Number);
+  const y = yRaw || 0;
+  const m = mRaw || 0;
+  if (!y || !m) return '';
   const prevMonth = m === 1 ? 12 : m - 1;
   const prevYear = m === 1 ? y - 1 : y;
   return `${prevYear}-${String(prevMonth).padStart(2, '0')}`;

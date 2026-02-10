@@ -17,6 +17,7 @@ const Settings = () => {
   const { hotel, setHotel, users, addUser, updateUserRole } = useData();
   const { role, isAdmin } = useAuth();
   const [hotelName, setHotelName] = useState(hotel.name);
+  const [hotelTimezone, setHotelTimezone] = useState(hotel.timezone);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
@@ -27,7 +28,8 @@ const Settings = () => {
 
   useEffect(() => {
     setHotelName(hotel.name);
-  }, [hotel.name]);
+    setHotelTimezone(hotel.timezone);
+  }, [hotel.name, hotel.timezone]);
 
   const resetUserForm = () => {
     setUserEmail("");
@@ -82,10 +84,10 @@ const Settings = () => {
             </div>
             <div className="space-y-2">
               <Label>{t.settings.timezone}</Label>
-              <Input value={hotel.timezone} disabled />
+              <Input value={hotelTimezone} onChange={(e) => setHotelTimezone(e.target.value)} />
             </div>
           </div>
-          <Button onClick={() => setHotel({ ...hotel, name: hotelName })}>{t.common.save}</Button>
+          <Button onClick={() => setHotel({ ...hotel, name: hotelName, timezone: hotelTimezone })}>{t.common.save}</Button>
         </CardContent>
       </Card>
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { PaymentsService } from './payments.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { UserContextGuard } from '../common/guards/user-context.guard.js';
@@ -26,5 +26,10 @@ export class PaymentsController {
   @Patch(':id')
   update(@CurrentUser() user: UserContext, @Param('id') id: string, @Body() dto: UpdatePaymentDto) {
     return this.paymentsService.update(user, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: UserContext, @Param('id') id: string) {
+    return this.paymentsService.remove(user, id);
   }
 }

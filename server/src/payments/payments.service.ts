@@ -88,4 +88,21 @@ export class PaymentsService {
 
     return mapPayment(payment);
   }
+
+  async remove(user: UserContext, id: string) {
+    const existing = await this.prisma.payment.findFirst({
+      where: { id, hotelId: user.hotelId },
+    });
+    if (!existing) throw new NotFoundException('Payment not found');
+
+    if (user.role !== 'ADMIN') {
+      await this.ensureManagerCanEditDate(user, existing.paidAt);
+    }
+
+    const payment = await this.prisma.payment.delete({
+      where: { id: existing.id },
+    });
+
+    return mapPayment(payment);
+  }
 }

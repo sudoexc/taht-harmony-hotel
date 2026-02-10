@@ -84,4 +84,21 @@ export class ExpensesService {
 
     return mapExpense(expense);
   }
+
+  async remove(user: UserContext, id: string) {
+    const existing = await this.prisma.expense.findFirst({
+      where: { id, hotelId: user.hotelId },
+    });
+    if (!existing) throw new NotFoundException('Expense not found');
+
+    if (user.role !== 'ADMIN') {
+      await this.ensureManagerCanEditDate(user, existing.spentAt);
+    }
+
+    const expense = await this.prisma.expense.delete({
+      where: { id: existing.id },
+    });
+
+    return mapExpense(expense);
+  }
 }

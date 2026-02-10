@@ -10,14 +10,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Search } from "lucide-react";
-import { formatCurrency, formatDate, dateStr } from "@/lib/format";
+import { Plus, Pencil, Search, Trash2 } from "lucide-react";
+import { formatCurrency, formatDate, getTodayInTimeZone } from "@/lib/format";
 import { Expense, ExpenseCategory, PaymentMethod } from "@/types";
+import { ApiError } from "@/lib/api";
 
 const Expenses = () => {
   const { t, language } = useLanguage();
-  const { expenses, addExpense, updateExpense } = useData();
+  const { expenses, addExpense, updateExpense, removeExpense, hotel } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -35,6 +46,8 @@ const Expenses = () => {
   const [formAmount, setFormAmount] = useState("");
   const [formComment, setFormComment] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Expense | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -61,8 +74,9 @@ const Expenses = () => {
   }, [expenses, categoryFilter, methodFilter, search, sortKey]);
 
   const openAdd = () => {
+    setActionError(null);
     setEditingExpense(null);
-    setFormDate(dateStr(new Date()));
+    setFormDate(getTodayInTimeZone(hotel.timezone));
     setFormCategory("OTHER");
     setFormMethod("CASH");
     setFormAmount("");
@@ -72,6 +86,7 @@ const Expenses = () => {
   };
 
   const openEdit = (expense: Expense) => {
+    setActionError(null);
     setEditingExpense(expense);
     setFormDate(expense.spent_at.split("T")[0]);
     setFormCategory(expense.category);
@@ -115,6 +130,30 @@ const Expenses = () => {
       addExpense(payload);
     }
     setDialogOpen(false);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await removeExpense(deleteTarget.id);
+      setDeleteTarget(null);
+      setActionError(null);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          setActionError(t.auth.sessionExpired);
+        } else if (error.status === 403) {
+          setActionError(t.validation.closedMonthEdit);
+        } else if (error.status === 404) {
+          setActionError(t.validation.notFound);
+        } else {
+          setActionError(t.validation.deleteFailed);
+        }
+      } else {
+        setActionError(t.validation.deleteFailed);
+      }
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -162,6 +201,10 @@ const Expenses = () => {
         </Select>
       </div>
 
+      {actionError && (
+        <div className="text-sm text-destructive">{actionError}</div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -192,6 +235,15 @@ const Expenses = () => {
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(expense)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => { setActionError(null); setDeleteTarget(expense); }}
+                        disabled={locked && !isAdmin}
+                        aria-label={t.common.delete}
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -261,6 +313,19 @@ const Expenses = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.common.confirmDeleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t.common.delete}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

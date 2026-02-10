@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Pencil, Eye, LogIn, LogOut } from "lucide-react";
-import { formatCurrency, formatDate, getNights, getStayTotal, dateStr, addDays } from "@/lib/format";
+import { formatCurrency, formatDate, getNights, getStayTotal, getTodayInTimeZone, shiftDateStr } from "@/lib/format";
 import { PaymentMethod, Stay, StayStatus } from "@/types";
 import { ApiError } from "@/lib/api";
 
@@ -26,7 +26,7 @@ const stayStatusColors: Record<string, string> = {
 
 const Stays = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addStay, updateStay, addPayment } = useData();
+  const { rooms, stays, payments, addStay, updateStay, addPayment, hotel } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked, isStayLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -113,14 +113,14 @@ const Stays = () => {
   }, [stays, search, statusFilter, sortKey, getRoomNumber, getStayPaid]);
 
   const openAdd = () => {
-    const today = new Date();
     const defaultRoom = rooms[0];
+    const todayStr = getTodayInTimeZone(hotel.timezone);
     setEditingStay(null);
     setFormGuestName("");
     setFormGuestPhone("");
     setFormRoomId(rooms[0]?.id || "");
-    setFormCheckIn(dateStr(today));
-    setFormCheckOut(dateStr(addDays(today, 1)));
+    setFormCheckIn(todayStr);
+    setFormCheckOut(shiftDateStr(todayStr, 1));
     setFormStatus("BOOKED");
     setFormPrice(defaultRoom ? String(defaultRoom.base_price) : "0");
     setFormDiscount("0");

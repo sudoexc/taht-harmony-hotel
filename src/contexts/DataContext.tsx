@@ -20,8 +20,10 @@ interface DataContextType {
   updateStay: (stay: Stay) => Promise<void>;
   addPayment: (payment: Payment) => Promise<void>;
   updatePayment: (payment: Payment) => Promise<void>;
+  removePayment: (paymentId: string) => Promise<void>;
   addExpense: (expense: Expense) => Promise<void>;
   updateExpense: (expense: Expense) => Promise<void>;
+  removeExpense: (expenseId: string) => Promise<void>;
   addUser: (payload: { full_name: string; email: string; password: string; role: UserWithRole['role'] }) => Promise<void>;
   updateUserRole: (userId: string, role: UserWithRole['role']) => Promise<void>;
   closePreviousMonth: () => Promise<void>;
@@ -127,7 +129,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!nextHotel.id) return;
     const updated = await apiFetch<Hotel>('/hotels/me', {
       method: 'PATCH',
-      body: JSON.stringify({ name: nextHotel.name }),
+      body: JSON.stringify({ name: nextHotel.name, timezone: nextHotel.timezone }),
     });
     setHotelState(updated);
   };
@@ -237,6 +239,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setPayments((prev) => prev.map((p) => (p.id === payment.id ? normalizePayment(updated) : p)));
   };
 
+  const removePayment = async (paymentId: string) => {
+    await apiFetch(`/payments/${paymentId}`, { method: 'DELETE' });
+    setPayments((prev) => prev.filter((p) => p.id !== paymentId));
+  };
+
   const addExpense = async (expense: Expense) => {
     const payload = {
       spent_at: expense.spent_at,
@@ -265,6 +272,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
     setExpenses((prev) => prev.map((e) => (e.id === expense.id ? normalizeExpense(updated) : e)));
+  };
+
+  const removeExpense = async (expenseId: string) => {
+    await apiFetch(`/expenses/${expenseId}`, { method: 'DELETE' });
+    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
   };
 
   const isMonthClosed = (month: string) => monthClosings.some((closing) => closing.month === month);
@@ -316,10 +328,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         updateRoom,
         addStay,
         updateStay,
-        addPayment,
-        updatePayment,
-        addExpense,
-        updateExpense,
+    addPayment,
+    updatePayment,
+    removePayment,
+    addExpense,
+    updateExpense,
+    removeExpense,
         addUser,
         updateUserRole,
         closePreviousMonth,

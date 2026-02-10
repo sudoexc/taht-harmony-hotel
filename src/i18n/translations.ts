@@ -36,6 +36,8 @@ export const translations = {
       toggleSidebar: 'Переключить меню',
       closeMonth: 'Закрыть месяц',
       noData: 'Нет данных',
+      confirmDeleteTitle: 'Удалить запись?',
+      confirmDeleteDescription: 'Действие нельзя отменить.',
     },
     dashboard: {
       title: 'Панель управления',
@@ -182,6 +184,7 @@ export const translations = {
       signOut: 'Выйти',
       invalid: 'Неверный email или пароль',
       loading: 'Загрузка...',
+      sessionExpired: 'Сессия истекла. Войдите снова.',
     },
     validation: {
       checkOutAfterCheckIn: 'Дата выезда должна быть позже даты заезда',
@@ -195,6 +198,8 @@ export const translations = {
       userCreateFailed: 'Не удалось создать пользователя',
       userRoleFailed: 'Не удалось обновить роль',
       overlap: 'Номер занят в выбранные даты',
+      deleteFailed: 'Не удалось удалить запись',
+      notFound: 'Запись не найдена',
     },
     notFound: {
       title: 'Страница не найдена',
@@ -202,7 +207,7 @@ export const translations = {
     },
     app: {
       name: 'Taht',
-      description: 'Mehmonxona boshqaruvi',
+      description: 'Управление отелем',
     },
     status: {
       BOOKED: 'Забронировано',
@@ -270,6 +275,8 @@ export const translations = {
       toggleSidebar: 'Menyuni almashtirish',
       closeMonth: 'Oyni yopish',
       noData: "Ma'lumot yo'q",
+      confirmDeleteTitle: "Yozuv o'chirilsinmi?",
+      confirmDeleteDescription: "Bu amalni bekor qilib bo'lmaydi.",
     },
     dashboard: {
       title: 'Boshqaruv paneli',
@@ -416,6 +423,7 @@ export const translations = {
       signOut: 'Chiqish',
       invalid: 'Email yoki parol noto‘g‘ri',
       loading: 'Yuklanmoqda...',
+      sessionExpired: 'Sessiya tugadi. Qayta kiring.',
     },
     validation: {
       checkOutAfterCheckIn: 'Chiqish sanasi kirish sanasidan keyin bo‘lishi kerak',
@@ -429,6 +437,8 @@ export const translations = {
       userCreateFailed: 'Foydalanuvchi yaratib bo‘lmadi',
       userRoleFailed: 'Rolni yangilab bo‘lmadi',
       overlap: 'Tanlangan sanalarda xona band',
+      deleteFailed: "Yozuvni o‘chirib bo‘lmadi",
+      notFound: 'Yozuv topilmadi',
     },
     notFound: {
       title: 'Sahifa topilmadi',
@@ -436,7 +446,7 @@ export const translations = {
     },
     app: {
       name: 'Taht',
-      description: 'Управление отелем',
+      description: 'Mehmonxona boshqaruvi',
     },
     status: {
       BOOKED: 'Band qilingan',

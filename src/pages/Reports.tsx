@@ -5,7 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { formatCurrency, getMonthKey, getMonthRange, getPreviousMonthKey, dateStr } from "@/lib/format";
+import { formatCurrency, getMonthKey, getMonthRange, getPreviousMonthKeyFromMonthKey, getTodayInTimeZone, shiftDateStr } from "@/lib/format";
 import { ExpenseCategory, PaymentMethod, TotalsSnapshot } from "@/types";
 import { apiFetch } from "@/lib/api";
 import * as XLSX from "xlsx";
@@ -33,14 +33,13 @@ const emptySnapshot = (): TotalsSnapshot => ({
 
 const Reports = () => {
   const { t, language } = useLanguage();
-  const { monthClosings, closePreviousMonth, reopenMonth, isMonthClosed } = useData();
+  const { monthClosings, closePreviousMonth, reopenMonth, isMonthClosed, hotel } = useData();
   const { isAdmin } = useAuth();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
 
-  const today = new Date();
-  const todayStr = dateStr(today);
+  const todayStr = getTodayInTimeZone(hotel.timezone);
   const [preset, setPreset] = useState("thisMonth");
-  const currentMonthKey = getMonthKey(today);
+  const currentMonthKey = getMonthKey(todayStr);
   const [rangeStart, setRangeStart] = useState(() => getMonthRange(currentMonthKey).start);
   const [rangeEnd, setRangeEnd] = useState(() => getMonthRange(currentMonthKey).end);
 
@@ -79,16 +78,14 @@ const Reports = () => {
       setRangeStart(todayStr);
       setRangeEnd(todayStr);
     } else if (key === "last7Days") {
-      const start = new Date(today);
-      start.setDate(start.getDate() - 6);
-      setRangeStart(dateStr(start));
+      setRangeStart(shiftDateStr(todayStr, -6));
       setRangeEnd(todayStr);
     } else if (key === "thisMonth") {
       const { start, end } = getMonthRange(currentMonthKey);
       setRangeStart(start);
       setRangeEnd(end);
     } else if (key === "lastMonth") {
-      const lastMonthKey = getPreviousMonthKey(today);
+      const lastMonthKey = getPreviousMonthKeyFromMonthKey(currentMonthKey);
       const { start, end } = getMonthRange(lastMonthKey);
       setRangeStart(start);
       setRangeEnd(end);
@@ -113,7 +110,7 @@ const Reports = () => {
     { key: "lastMonth", label: t.reports.lastMonth },
   ];
 
-  const previousMonthKey = getPreviousMonthKey(today);
+  const previousMonthKey = getPreviousMonthKeyFromMonthKey(currentMonthKey);
 
   const sortedClosings = [...monthClosings].sort((a, b) => b.month.localeCompare(a.month));
 

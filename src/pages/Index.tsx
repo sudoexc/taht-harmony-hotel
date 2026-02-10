@@ -5,15 +5,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LogIn, LogOut, BedDouble, DoorOpen, Plus } from "lucide-react";
-import { formatCurrency, formatDate, getStayTotal, dateStr } from "@/lib/format";
+import { formatCurrency, formatDate, getStayTotal, getTodayInTimeZone } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments } = useData();
+  const { rooms, stays, payments, hotel } = useData();
   const navigate = useNavigate();
-  const today = new Date();
-  const todayStr = dateStr(today);
+  const todayStr = getTodayInTimeZone(hotel.timezone);
   const locale = language === 'uz' ? 'uz-UZ' : 'ru-RU';
 
   const todayCheckIns = stays.filter(s => s.check_in_date === todayStr && s.status !== 'CANCELLED');

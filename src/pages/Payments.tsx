@@ -10,14 +10,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Search } from "lucide-react";
-import { formatCurrency, formatDate, dateStr } from "@/lib/format";
+import { Plus, Pencil, Search, Trash2 } from "lucide-react";
+import { formatCurrency, formatDate, getTodayInTimeZone } from "@/lib/format";
 import { Payment, PaymentMethod } from "@/types";
+import { ApiError } from "@/lib/api";
 
 const Payments = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addPayment, updatePayment } = useData();
+  const { rooms, stays, payments, addPayment, updatePayment, removePayment, hotel } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -34,6 +45,8 @@ const Payments = () => {
   const [formAmount, setFormAmount] = useState("");
   const [formComment, setFormComment] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Payment | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const getInfo = useCallback((stayId: string) => {
     const stay = stays.find((s) => s.id === stayId);
@@ -70,9 +83,10 @@ const Payments = () => {
   }, [payments, methodFilter, search, sortKey, getInfo]);
 
   const openAdd = () => {
+    setActionError(null);
     setEditingPayment(null);
     setFormStayId(stays[0]?.id || "");
-    setFormDate(dateStr(new Date()));
+    setFormDate(getTodayInTimeZone(hotel.timezone));
     setFormMethod("CASH");
     setFormAmount("");
     setFormComment("");
@@ -81,6 +95,7 @@ const Payments = () => {
   };
 
   const openEdit = (payment: Payment) => {
+    setActionError(null);
     setEditingPayment(payment);
     setFormStayId(payment.stay_id);
     setFormDate(payment.paid_at.split("T")[0]);
@@ -126,6 +141,30 @@ const Payments = () => {
     setDialogOpen(false);
   };
 
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await removePayment(deleteTarget.id);
+      setDeleteTarget(null);
+      setActionError(null);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        if (error.status === 401) {
+          setActionError(t.auth.sessionExpired);
+        } else if (error.status === 403) {
+          setActionError(t.validation.closedMonthEdit);
+        } else if (error.status === 404) {
+          setActionError(t.validation.notFound);
+        } else {
+          setActionError(t.validation.deleteFailed);
+        }
+      } else {
+        setActionError(t.validation.deleteFailed);
+      }
+      setDeleteTarget(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -159,6 +198,10 @@ const Payments = () => {
         </Select>
       </div>
 
+      {actionError && (
+        <div className="text-sm text-destructive">{actionError}</div>
+      )}
+
       <Card>
         <CardContent className="p-0">
           <Table>
@@ -190,6 +233,15 @@ const Payments = () => {
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(payment)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
                         <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => { setActionError(null); setDeleteTarget(payment); }}
+                        disabled={locked && !isAdmin}
+                        aria-label={t.common.delete}
+                      >
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -258,6 +310,19 @@ const Payments = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.common.confirmDeleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>{t.common.delete}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
