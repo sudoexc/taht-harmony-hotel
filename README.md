@@ -95,6 +95,16 @@ cd server
 npm run dev
 ```
 
+### Auth (HTTP‑Only cookie)
+
+Login sets an `access_token` cookie (HttpOnly). Make sure `CORS_ORIGIN` in `server/.env` matches your frontend URL.
+
+### Health check
+
+```sh
+GET http://localhost:4000/health
+```
+
 ### 3a) Create the first admin (one-time)
 
 Registration is only allowed when no users exist (or when `ALLOW_REGISTER=true`).
@@ -114,6 +124,28 @@ From project root:
 ```sh
 npm install
 npm run dev
+```
+
+## Backups (pg_dump)
+
+Create a backup:
+
+```sh
+cd server
+./scripts/backup.sh
+```
+
+Restore a backup:
+
+```sh
+cd server
+./scripts/restore.sh ./backups/backup_YYYYMMDD_HHMMSS.sql.gz
+```
+
+Cron example (daily at 02:00):
+
+```sh
+0 2 * * * cd /path/to/server && ./scripts/backup.sh >> /path/to/server/backups/backup.log 2>&1
 ```
 
 ## How can I deploy this project?

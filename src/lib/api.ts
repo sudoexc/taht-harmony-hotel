@@ -1,5 +1,4 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
-const TOKEN_KEY = 'hotel_crm_token';
 
 export class ApiError extends Error {
   status: number;
@@ -12,22 +11,9 @@ export class ApiError extends Error {
   }
 }
 
-export const tokenStorage = {
-  get: () => localStorage.getItem(TOKEN_KEY),
-  set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
-};
-
-export async function apiFetch<T>(path: string, options: RequestInit & { auth?: boolean } = {}): Promise<T> {
-  const { auth = true, headers, body, ...rest } = options;
+export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const { headers, body, ...rest } = options;
   const requestHeaders = new Headers(headers);
-
-  if (auth) {
-    const token = tokenStorage.get();
-    if (token) {
-      requestHeaders.set('Authorization', `Bearer ${token}`);
-    }
-  }
 
   if (body && !(body instanceof FormData)) {
     requestHeaders.set('Content-Type', 'application/json');
@@ -37,6 +23,7 @@ export async function apiFetch<T>(path: string, options: RequestInit & { auth?: 
     ...rest,
     headers: requestHeaders,
     body,
+    credentials: 'include',
   });
 
   const contentType = response.headers.get('content-type') || '';

@@ -47,6 +47,7 @@ model User {
   createdAt    DateTime    @default(now())
   profile      Profile?
   roles        UserRole[]
+  auditLogs    AuditLog[]
 }
 
 model Hotel {
@@ -60,6 +61,7 @@ model Hotel {
   payments      Payment[]
   expenses      Expense[]
   monthClosings MonthClosing[]
+  auditLogs     AuditLog[]
 }
 
 model Profile {
@@ -151,4 +153,20 @@ model MonthClosing {
   totalsJson Json?
 
   @@unique([hotelId, month])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  hotelId   String
+  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  entity    String
+  entityId  String?
+  payload   Json?
+  result    Json?
+  createdAt DateTime @default(now())
+
+  @@index([hotelId, createdAt])
 }

@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { UserRole } from '@/types';
-import { apiFetch, tokenStorage } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
 
 interface AuthUser {
   id: string;
@@ -30,14 +30,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    const token = tokenStorage.get();
-
-    if (!token) {
-      setLoading(false);
-      return () => {
-        active = false;
-      };
-    }
 
     apiFetch<{ user: AuthUser }>('/me')
       .then((res) => {
@@ -47,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setHotelId(res.user.hotel_id);
       })
       .catch(() => {
-        tokenStorage.clear();
         if (!active) return;
         setUser(null);
         setRole(null);
@@ -65,13 +56,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const res = await apiFetch<{ access_token: string; user: AuthUser }>('/auth/login', {
+      const res = await apiFetch<{ user: AuthUser }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
-        auth: false,
       });
 
-      tokenStorage.set(res.access_token);
       setUser(res.user);
       setRole(res.user.role);
       setHotelId(res.user.hotel_id);
@@ -84,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = () => {
-    tokenStorage.clear();
+    apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     setUser(null);
     setRole(null);
     setHotelId(null);
