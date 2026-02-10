@@ -17,6 +17,8 @@ fi
 echo "==> Sync project to ${USER}@${HOST}:${DEST}"
 ${RSYNC_PREFIX} rsync -av \
   -e "${RSYNC_SSH}" \
+  --exclude .env \
+  --exclude server/.env \
   --exclude node_modules \
   --exclude dist \
   --exclude server/node_modules \

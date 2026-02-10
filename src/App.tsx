@@ -19,6 +19,8 @@ import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 
 const queryClient = new QueryClient();
+const baseUrl = import.meta.env.BASE_URL || "/";
+const basename = baseUrl !== "/" && baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -29,7 +31,7 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
-              <BrowserRouter>
+              <BrowserRouter basename={basename}>
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route element={<ProtectedLayout />}>
