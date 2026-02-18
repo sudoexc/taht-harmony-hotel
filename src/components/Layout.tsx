@@ -1,16 +1,38 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { Moon, Sun, LogOut, User } from "lucide-react";
+import { Moon, Sun, LogOut, User, Wallet, ChevronDown } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useData } from "@/contexts/DataContext";
+import { useMemo } from "react";
+import { formatCurrency } from "@/lib/format";
+
+const METHOD_COLORS: Record<string, string> = {
+  CASH: "text-success",
+  CARD: "text-info",
+  PAYME: "text-primary",
+  CLICK: "text-purple-500",
+};
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user, signOut } = useAuth();
+  const { payments } = useData();
+  const locale = language === "uz" ? "uz-UZ" : "ru-RU";
+
+  const kassaStats = useMemo(() => {
+    const methods = ["CASH", "CARD", "PAYME", "CLICK"] as const;
+    const byMethod = Object.fromEntries(
+      methods.map((m) => [m, payments.filter((p) => p.method === m).reduce((s, p) => s + p.amount, 0)])
+    );
+    const total = methods.reduce((s, m) => s + byMethod[m], 0);
+    return { total, byMethod };
+  }, [payments]);
 
   return (
     <SidebarProvider>
@@ -25,11 +47,44 @@ export function Layout({ children }: { children: React.ReactNode }) {
             />
             <div className="flex items-center gap-1">
               {user?.email && (
-                <div className="flex items-center gap-1.5 mr-2 px-2.5 py-1 rounded-lg bg-muted/60">
+                <div className="flex items-center gap-1.5 mr-1 px-2.5 py-1 rounded-lg bg-muted/60">
                   <User className="h-3 w-3 text-muted-foreground" />
                   <span className="text-xs text-muted-foreground font-medium">{user.email}</span>
                 </div>
               )}
+
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="flex items-center gap-1.5 mr-2 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer">
+                    <Wallet className="h-3 w-3 text-primary" />
+                    <span className="text-xs font-semibold text-primary tabular-nums">
+                      {formatCurrency(kassaStats.total, locale, t.common.currency)}
+                    </span>
+                    <ChevronDown className="h-3 w-3 text-primary/60" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-56 p-3" align="end">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Касса</p>
+                  <div className="space-y-1.5">
+                    {(["CASH", "CARD", "PAYME", "CLICK"] as const).map((method) => (
+                      <div key={method} className="flex items-center justify-between">
+                        <span className={`text-xs font-medium ${METHOD_COLORS[method]}`}>
+                          {t.paymentMethod[method]}
+                        </span>
+                        <span className="text-xs tabular-nums text-foreground font-medium">
+                          {formatCurrency(kassaStats.byMethod[method], locale, t.common.currency)}
+                        </span>
+                      </div>
+                    ))}
+                    <div className="border-t border-border mt-2 pt-2 flex items-center justify-between">
+                      <span className="text-xs font-bold">Итого</span>
+                      <span className="text-xs font-bold tabular-nums text-primary">
+                        {formatCurrency(kassaStats.total, locale, t.common.currency)}
+                      </span>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
               <LanguageSwitcher />
               <Button
                 variant="ghost"
