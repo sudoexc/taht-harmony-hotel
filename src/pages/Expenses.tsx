@@ -23,10 +23,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Plus, Pencil, Search, Trash2 } from "lucide-react";
 import { formatCurrency, formatDate, getTodayInTimeZone } from "@/lib/format";
-import { Expense, ExpenseCategory, PaymentMethod } from "@/types";
+import { Expense, ExpenseCategory } from "@/types";
 import { ApiError } from "@/lib/api";
-
-const STANDARD_METHODS: PaymentMethod[] = ['CASH', 'CARD', 'PAYME', 'CLICK'];
 
 const Expenses = () => {
   const { t, language } = useLanguage();
@@ -44,8 +42,7 @@ const Expenses = () => {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [formDate, setFormDate] = useState("");
   const [formCategory, setFormCategory] = useState<ExpenseCategory>("OTHER");
-  const [formMethod, setFormMethod] = useState<PaymentMethod>("CASH");
-  const [formMethodValue, setFormMethodValue] = useState("CASH");
+  const [formMethodValue, setFormMethodValue] = useState("");
   const [formAmount, setFormAmount] = useState("");
   const [formComment, setFormComment] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -55,26 +52,25 @@ const Expenses = () => {
   const [newMethodName, setNewMethodName] = useState("");
   const [addMethodError, setAddMethodError] = useState<string | null>(null);
 
+  const getMethodLabel = (expense: Expense) =>
+    expense.custom_method_label || expense.method;
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return expenses
       .filter((expense) => {
         if (categoryFilter !== "all" && expense.category !== categoryFilter) return false;
-        if (methodFilter !== "all" && expense.method !== methodFilter) return false;
+        if (methodFilter !== "all" && getMethodLabel(expense) !== methodFilter) return false;
         if (!query) return true;
         return (expense.comment || "").toLowerCase().includes(query);
       })
       .sort((a, b) => {
         switch (sortKey) {
-          case "amountAsc":
-            return a.amount - b.amount;
-          case "amountDesc":
-            return b.amount - a.amount;
-          case "dateAsc":
-            return a.spent_at.localeCompare(b.spent_at);
+          case "amountAsc": return a.amount - b.amount;
+          case "amountDesc": return b.amount - a.amount;
+          case "dateAsc": return a.spent_at.localeCompare(b.spent_at);
           case "dateDesc":
-          default:
-            return b.spent_at.localeCompare(a.spent_at);
+          default: return b.spent_at.localeCompare(a.spent_at);
         }
       });
   }, [expenses, categoryFilter, methodFilter, search, sortKey]);
@@ -84,8 +80,7 @@ const Expenses = () => {
     setEditingExpense(null);
     setFormDate(getTodayInTimeZone(hotel.timezone));
     setFormCategory("OTHER");
-    setFormMethod("CASH");
-    setFormMethodValue("CASH");
+    setFormMethodValue(customPaymentMethods[0]?.name || "");
     setFormAmount("");
     setFormComment("");
     setFormError(null);
@@ -97,8 +92,7 @@ const Expenses = () => {
     setEditingExpense(expense);
     setFormDate(expense.spent_at.split("T")[0]);
     setFormCategory(expense.category);
-    setFormMethod(expense.method);
-    setFormMethodValue(expense.method === 'OTHER' ? (expense.custom_method_label || 'OTHER') : expense.method);
+    setFormMethodValue(getMethodLabel(expense));
     setFormAmount(String(expense.amount));
     setFormComment(expense.comment || "");
     setFormError(null);
@@ -111,7 +105,6 @@ const Expenses = () => {
     try {
       await addCustomPaymentMethod(name);
       setFormMethodValue(name);
-      setFormMethod('OTHER');
       setNewMethodName("");
       setAddMethodError(null);
       setAddMethodOpen(false);
@@ -128,6 +121,10 @@ const Expenses = () => {
       setFormError(t.validation.required);
       return;
     }
+    if (!formMethodValue) {
+      setFormError("Выберите метод оплаты");
+      return;
+    }
     if (!amount || amount <= 0) {
       setFormError(t.validation.amountPositive);
       return;
@@ -137,14 +134,13 @@ const Expenses = () => {
       return;
     }
 
-    const isCustom = !STANDARD_METHODS.includes(formMethodValue as PaymentMethod);
     const payload: Expense = {
       id: editingExpense?.id || `exp-${Date.now()}`,
       hotel_id: hotelId || "",
       spent_at: new Date(`${formDate}T12:00:00Z`).toISOString(),
       category: formCategory,
-      method: isCustom ? 'OTHER' : (formMethodValue as PaymentMethod),
-      custom_method_label: isCustom ? formMethodValue : null,
+      method: 'OTHER',
+      custom_method_label: formMethodValue,
       amount,
       comment: formComment,
     };
@@ -165,15 +161,10 @@ const Expenses = () => {
       setActionError(null);
     } catch (error) {
       if (error instanceof ApiError) {
-        if (error.status === 401) {
-          setActionError(t.auth.sessionExpired);
-        } else if (error.status === 403) {
-          setActionError(t.validation.closedMonthEdit);
-        } else if (error.status === 404) {
-          setActionError(t.validation.notFound);
-        } else {
-          setActionError(t.validation.deleteFailed);
-        }
+        if (error.status === 401) setActionError(t.auth.sessionExpired);
+        else if (error.status === 403) setActionError(t.validation.closedMonthEdit);
+        else if (error.status === 404) setActionError(t.validation.notFound);
+        else setActionError(t.validation.deleteFailed);
       } else {
         setActionError(t.validation.deleteFailed);
       }
@@ -209,10 +200,9 @@ const Expenses = () => {
           <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t.common.all}</SelectItem>
-            <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
-            <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
-            <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
-            <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
+            {customPaymentMethods.map((m) => (
+              <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Select value={sortKey} onValueChange={setSortKey}>
@@ -254,7 +244,7 @@ const Expenses = () => {
                     </TableCell>
                     <TableCell className="font-medium">{formatCurrency(expense.amount, locale, t.common.currency)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{expense.method === 'OTHER' ? (expense.custom_method_label || t.paymentMethod.OTHER) : t.paymentMethod[expense.method]}</Badge>
+                      <Badge variant="outline">{getMethodLabel(expense)}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{expense.comment}</TableCell>
                     <TableCell>
@@ -307,16 +297,19 @@ const Expenses = () => {
               <div className="space-y-2">
                 <Label>{t.expenses.method}</Label>
                 <div className="flex gap-2">
-                  <Select value={formMethodValue} onValueChange={(v) => { setFormMethodValue(v); setFormMethod(STANDARD_METHODS.includes(v as PaymentMethod) ? v as PaymentMethod : 'OTHER'); }}>
-                    <SelectTrigger disabled={expenseLocked && !isAdmin}><SelectValue /></SelectTrigger>
+                  <Select value={formMethodValue} onValueChange={setFormMethodValue}>
+                    <SelectTrigger disabled={expenseLocked && !isAdmin}>
+                      <SelectValue placeholder="Выберите метод" />
+                    </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
-                      <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
-                      <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
-                      <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
                       {customPaymentMethods.map((m) => (
                         <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
                       ))}
+                      {customPaymentMethods.length === 0 && (
+                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          Нет методов. Добавьте через [+]
+                        </div>
+                      )}
                     </SelectContent>
                   </Select>
                   {isAdmin && (
@@ -356,7 +349,7 @@ const Expenses = () => {
           </DialogHeader>
           <div className="space-y-3 py-2">
             <Input
-              placeholder="Название (напр. Uzcard, Humo...)"
+              placeholder="Название (напр. Uzcard, Наличные...)"
               value={newMethodName}
               onChange={(e) => { setNewMethodName(e.target.value); setAddMethodError(null); }}
               onKeyDown={(e) => e.key === 'Enter' && handleAddMethod()}

@@ -24,24 +24,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
 
-  const { payments, customPaymentMethods } = useData();
+  const { payments } = useData();
 
   const kassaStats = useMemo(() => {
-    const standard = ["CASH", "CARD", "PAYME", "CLICK"] as const;
     const byMethod: Record<string, number> = {};
-    for (const m of standard) {
-      byMethod[m] = payments.filter((p) => p.method === m).reduce((s, p) => s + p.amount, 0);
+    for (const p of payments) {
+      const label = p.custom_method_label || p.method;
+      byMethod[label] = (byMethod[label] || 0) + p.amount;
     }
-    // Custom methods
-    for (const cm of customPaymentMethods) {
-      byMethod[cm.name] = payments.filter((p) => p.method === 'OTHER' && p.custom_method_label === cm.name).reduce((s, p) => s + p.amount, 0);
-    }
-    // Other unrecognized custom
-    const otherUnknown = payments.filter((p) => p.method === 'OTHER' && (!p.custom_method_label || !customPaymentMethods.find(cm => cm.name === p.custom_method_label))).reduce((s, p) => s + p.amount, 0);
-    if (otherUnknown > 0) byMethod['—'] = otherUnknown;
     const total = Object.values(byMethod).reduce((s, v) => s + v, 0);
     return { total, byMethod };
-  }, [payments, customPaymentMethods]);
+  }, [payments]);
 
   return (
     <SidebarProvider>
