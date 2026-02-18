@@ -2,6 +2,7 @@ import { LayoutDashboard, BedDouble, CalendarDays, CreditCard, Receipt, BarChart
 import { NavLink } from "@/components/NavLink";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Sidebar,
   SidebarContent,
@@ -17,6 +18,7 @@ import {
 export function AppSidebar() {
   const { t } = useLanguage();
   const { hotel } = useData();
+  const { isAdmin } = useAuth();
 
   const mainItems = [
     { title: t.nav.dashboard, url: "/", icon: LayoutDashboard },
@@ -27,7 +29,7 @@ export function AppSidebar() {
   const financeItems = [
     { title: t.nav.payments, url: "/payments", icon: CreditCard },
     { title: t.nav.expenses, url: "/expenses", icon: Receipt },
-    { title: t.nav.reports, url: "/reports", icon: BarChart3 },
+    ...(isAdmin ? [{ title: t.nav.reports, url: "/reports", icon: BarChart3 }] : []),
   ];
 
   const systemItems = [
