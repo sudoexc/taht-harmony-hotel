@@ -11,19 +11,24 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import User, Hotel, Profile, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod
+from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod
 from .permissions import IsAdmin
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
 
-def make_token(user, profile):
+def make_token(user, profile, role):
     token = AccessToken()
     token['sub'] = user.id
     token['email'] = user.email
     token['hotel_id'] = profile.hotel_id
-    token['role'] = profile.role
+    token['role'] = role
     return str(token)
+
+
+def get_role(user_id):
+    ur = UserRole.objects.filter(user_id=user_id).first()
+    return ur.role if ur else 'MANAGER'
 
 
 def set_auth_cookie(response, token):
@@ -88,12 +93,13 @@ class LoginView(APIView):
         except Profile.DoesNotExist:
             return Response({'message': 'Profile not found'}, status=401)
 
-        token = make_token(user, profile)
+        role = get_role(user.id)
+        token = make_token(user, profile, role)
         data = {
             'id': user.id,
             'email': user.email,
             'full_name': profile.full_name,
-            'role': profile.role,
+            'role': role,
             'hotel_id': profile.hotel_id,
         }
         resp = Response(data)
@@ -122,7 +128,7 @@ class MeView(APIView):
             'id': u.id,
             'email': u.email,
             'full_name': profile.full_name,
-            'role': u.role,
+            'role': u.role,  # from JWT
             'hotel_id': u.hotel_id,
         })
 
@@ -580,14 +586,15 @@ class UserListCreateView(APIView):
     permission_classes = [IsAdmin]
 
     def get(self, request):
-        profiles = Profile.objects.filter(hotel_id=hotel_id(request)).select_related()
+        profiles = Profile.objects.filter(hotel_id=hotel_id(request))
         result = []
         for p in profiles:
             try:
                 user = User.objects.get(id=p.id)
+                role = get_role(p.id)
                 result.append({
                     'id': p.id, 'email': user.email,
-                    'full_name': p.full_name, 'role': p.role,
+                    'full_name': p.full_name, 'role': role,
                 })
             except User.DoesNotExist:
                 pass
@@ -613,8 +620,9 @@ class UserListCreateView(APIView):
 
         user = User(id=uid, email=email, password_hash=hashed, created_at=now)
         user.save()
-        profile = Profile(id=uid, full_name=full_name, hotel_id=hotel_id(request), role=role)
+        profile = Profile(id=uid, full_name=full_name, hotel_id=hotel_id(request), created_at=now)
         profile.save()
+        UserRole(id=str(uuid.uuid4()), user_id=uid, role=role).save()
 
         return Response({'id': uid, 'email': email, 'full_name': full_name, 'role': role}, status=201)
 
@@ -630,13 +638,18 @@ class UserRoleView(APIView):
         role = request.data.get('role')
         if role not in ('ADMIN', 'MANAGER'):
             return Response({'message': 'Invalid role'}, status=400)
-        profile.role = role
-        profile.save(update_fields=['role'])
+        # Update role in UserRole table
+        ur = UserRole.objects.filter(user_id=pk).first()
+        if ur:
+            ur.role = role
+            ur.save(update_fields=['role'])
+        else:
+            UserRole(id=str(uuid.uuid4()), user_id=pk, role=role).save()
         try:
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
             return Response({'message': 'User not found'}, status=404)
-        return Response({'id': pk, 'email': user.email, 'full_name': profile.full_name, 'role': profile.role})
+        return Response({'id': pk, 'email': user.email, 'full_name': profile.full_name, 'role': role})
 
 
 class UserDeleteView(APIView):
@@ -649,6 +662,7 @@ class UserDeleteView(APIView):
             profile = Profile.objects.get(id=pk, hotel_id=hotel_id(request))
         except Profile.DoesNotExist:
             return Response({'message': 'Not found'}, status=404)
+        UserRole.objects.filter(user_id=pk).delete()
         profile.delete()
         try:
             User.objects.filter(id=pk).delete()

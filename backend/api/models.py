@@ -27,11 +27,21 @@ class Profile(models.Model):
     id = models.CharField(max_length=36, primary_key=True, db_column='id')
     full_name = models.CharField(max_length=255, db_column='fullName')
     hotel = models.ForeignKey(Hotel, on_delete=models.PROTECT, db_column='hotelId')
-    role = models.CharField(max_length=20, default='MANAGER')
+    created_at = models.DateTimeField(db_column='createdAt', null=True)
 
     class Meta:
         managed = False
         db_table = '"Profile"'
+
+
+class UserRole(models.Model):
+    id = models.CharField(max_length=36, primary_key=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, db_column='userId')
+    role = models.CharField(max_length=20)
+
+    class Meta:
+        managed = False
+        db_table = '"UserRole"'
 
 
 class Room(models.Model):
