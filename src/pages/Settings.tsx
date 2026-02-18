@@ -9,13 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserRole } from "@/types";
+import { Trash2 } from "lucide-react";
 
 const Settings = () => {
   const { t } = useLanguage();
-  const { hotel, setHotel, users, addUser, updateUserRole } = useData();
-  const { role, isAdmin } = useAuth();
+  const { hotel, setHotel, users, addUser, updateUserRole, removeUser } = useData();
+  const { role, isAdmin, user: currentUser } = useAuth();
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [hotelName, setHotelName] = useState(hotel.name);
   const [hotelTimezone, setHotelTimezone] = useState(hotel.timezone);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
@@ -118,6 +121,7 @@ const Settings = () => {
                     <TableHead>{t.settings.fullName}</TableHead>
                     <TableHead>{t.settings.email}</TableHead>
                     <TableHead>{t.settings.role}</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -143,6 +147,13 @@ const Settings = () => {
                           </SelectContent>
                         </Select>
                       </TableCell>
+                      <TableCell>
+                        {profile.id !== currentUser?.id && (
+                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteUserId(profile.id)} aria-label={t.common.delete}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -151,6 +162,21 @@ const Settings = () => {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={!!deleteUserId} onOpenChange={(open) => { if (!open) setDeleteUserId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.common.confirmDeleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (deleteUserId) removeUser(deleteUserId); setDeleteUserId(null); }}>
+              {t.common.delete}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={userDialogOpen} onOpenChange={setUserDialogOpen}>
         <DialogContent>

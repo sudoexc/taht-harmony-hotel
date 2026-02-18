@@ -16,8 +16,10 @@ interface DataContextType {
   loading: boolean;
   addRoom: (room: Room) => Promise<void>;
   updateRoom: (room: Room) => Promise<void>;
+  removeRoom: (roomId: string) => Promise<void>;
   addStay: (stay: Stay) => Promise<void>;
   updateStay: (stay: Stay) => Promise<void>;
+  removeStay: (stayId: string) => Promise<void>;
   addPayment: (payment: Payment) => Promise<void>;
   updatePayment: (payment: Payment) => Promise<void>;
   removePayment: (paymentId: string) => Promise<void>;
@@ -26,6 +28,7 @@ interface DataContextType {
   removeExpense: (expenseId: string) => Promise<void>;
   addUser: (payload: { full_name: string; email: string; password: string; role: UserWithRole['role'] }) => Promise<void>;
   updateUserRole: (userId: string, role: UserWithRole['role']) => Promise<void>;
+  removeUser: (userId: string) => Promise<void>;
   closePreviousMonth: () => Promise<void>;
   reopenMonth: (month: string) => Promise<void>;
   isMonthClosed: (month: string) => boolean;
@@ -168,6 +171,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setRooms((prev) => prev.map((r) => (r.id === room.id ? normalizeRoom(updated) : r)));
   };
 
+  const removeRoom = async (roomId: string) => {
+    await apiFetch(`/rooms/${roomId}`, { method: 'DELETE' });
+    setRooms((prev) => prev.filter((r) => r.id !== roomId));
+  };
+
   const addStay = async (stay: Stay) => {
     const payload = {
       room_id: stay.room_id,
@@ -187,6 +195,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify(payload),
     });
     setStays((prev) => [normalizeStay(created), ...prev]);
+  };
+
+  const removeStay = async (stayId: string) => {
+    await apiFetch(`/stays/${stayId}`, { method: 'DELETE' });
+    setStays((prev) => prev.filter((s) => s.id !== stayId));
+    setPayments((prev) => prev.filter((p) => p.stay_id !== stayId));
   };
 
   const updateStay = async (stay: Stay) => {
@@ -297,6 +311,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setUsers((prev) => prev.map((u) => (u.id === userId ? updated : u)));
   };
 
+  const removeUser = async (userId: string) => {
+    await apiFetch(`/users/${userId}`, { method: 'DELETE' });
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
   const closePreviousMonth = async () => {
     const closing = await apiFetch<MonthClosing>('/month-closings/close-previous', {
       method: 'POST',
@@ -326,8 +345,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         loading,
         addRoom,
         updateRoom,
+        removeRoom,
         addStay,
         updateStay,
+        removeStay,
     addPayment,
     updatePayment,
     removePayment,
@@ -336,6 +357,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     removeExpense,
         addUser,
         updateUserRole,
+        removeUser,
         closePreviousMonth,
         reopenMonth,
         isMonthClosed,

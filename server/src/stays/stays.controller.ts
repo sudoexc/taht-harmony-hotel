@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { StaysService } from './stays.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { UserContextGuard } from '../common/guards/user-context.guard.js';
@@ -26,5 +26,10 @@ export class StaysController {
   @Patch(':id')
   update(@CurrentUser() user: UserContext, @Param('id') id: string, @Body() dto: UpdateStayDto) {
     return this.staysService.update(user, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: UserContext, @Param('id') id: string) {
+    return this.staysService.remove(user, id);
   }
 }

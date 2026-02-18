@@ -8,17 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Pencil, Search } from "lucide-react";
+import { Plus, Pencil, Search, Trash2 } from "lucide-react";
 import { formatCurrency } from "@/lib/format";
 import { Room, RoomType } from "@/types";
 
 const Rooms = () => {
   const { t, language } = useLanguage();
-  const { rooms, addRoom, updateRoom } = useData();
+  const { rooms, addRoom, updateRoom, removeRoom } = useData();
   const { hotelId } = useAuth();
   const locale = language === 'uz' ? 'uz-UZ' : 'ru-RU';
   const [search, setSearch] = useState("");
@@ -26,6 +27,7 @@ const Rooms = () => {
   const [sortKey, setSortKey] = useState("roomAsc");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [deleteRoomId, setDeleteRoomId] = useState<string | null>(null);
 
   const [formNumber, setFormNumber] = useState("");
   const [formFloor, setFormFloor] = useState("1");
@@ -163,9 +165,14 @@ const Rooms = () => {
                   </TableCell>
                   <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">{room.notes}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(room)} aria-label={t.common.edit}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(room)} aria-label={t.common.edit}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteRoomId(room.id)} aria-label={t.common.delete}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -173,6 +180,21 @@ const Rooms = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!deleteRoomId} onOpenChange={(open) => { if (!open) setDeleteRoomId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.common.confirmDeleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (deleteRoomId) removeRoom(deleteRoomId); setDeleteRoomId(null); }}>
+              {t.common.delete}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

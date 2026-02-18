@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateRoomDto } from './dto/create-room.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
@@ -43,6 +43,19 @@ export class RoomsService {
       },
     });
     return mapRoom(room);
+  }
+
+  async remove(hotelId: string, id: string) {
+    const existing = await this.prisma.room.findFirst({ where: { id, hotelId } });
+    if (!existing) throw new NotFoundException('Room not found');
+
+    const activeStay = await this.prisma.stay.findFirst({
+      where: { roomId: id, status: { in: ['BOOKED', 'CHECKED_IN'] } },
+    });
+    if (activeStay) throw new BadRequestException('Cannot delete room with active stays');
+
+    await this.prisma.room.delete({ where: { id: existing.id } });
+    return { success: true };
   }
 
   async update(hotelId: string, id: string, dto: UpdateRoomDto) {

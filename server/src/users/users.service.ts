@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateUserDto } from './dto/create-user.dto.js';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto.js';
@@ -68,6 +68,23 @@ export class UsersService {
       email: result.email,
       role: dto.role,
     };
+  }
+
+  async removeUser(hotelId: string, currentUserId: string, targetId: string) {
+    if (currentUserId === targetId) throw new BadRequestException('Cannot delete yourself');
+
+    const profile = await this.prisma.profile.findFirst({
+      where: { id: targetId, hotelId },
+    });
+    if (!profile) throw new NotFoundException('User not found');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.userRole.deleteMany({ where: { userId: profile.id } });
+      await tx.profile.delete({ where: { id: targetId } });
+      await tx.user.delete({ where: { id: profile.id } });
+    });
+
+    return { success: true };
   }
 
   async updateRole(hotelId: string, userId: string, dto: UpdateUserRoleDto) {

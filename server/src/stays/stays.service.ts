@@ -109,6 +109,19 @@ export class StaysService {
     return mapStay(stay);
   }
 
+  async remove(user: UserContext, id: string) {
+    const existing = await this.prisma.stay.findFirst({ where: { id, hotelId: user.hotelId } });
+    if (!existing) throw new NotFoundException('Stay not found');
+
+    if (user.role !== 'ADMIN') {
+      await this.ensureManagerCanEditRange(user, existing.checkInDate, existing.checkOutDate);
+    }
+
+    await this.prisma.payment.deleteMany({ where: { stayId: id } });
+    await this.prisma.stay.delete({ where: { id: existing.id } });
+    return { success: true };
+  }
+
   async update(user: UserContext, id: string, dto: UpdateStayDto) {
     const existing = await this.prisma.stay.findFirst({
       where: { id, hotelId: user.hotelId },

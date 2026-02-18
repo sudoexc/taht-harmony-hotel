@@ -10,9 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Pencil, Eye, LogIn, LogOut } from "lucide-react";
+import { Plus, Search, Pencil, Eye, LogIn, LogOut, Trash2 } from "lucide-react";
 import { formatCurrency, formatDate, getNights, getStayTotal, getTodayInTimeZone, shiftDateStr } from "@/lib/format";
 import { PaymentMethod, Stay, StayStatus } from "@/types";
 import { ApiError } from "@/lib/api";
@@ -26,7 +27,7 @@ const stayStatusColors: Record<string, string> = {
 
 const Stays = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addStay, updateStay, addPayment, hotel } = useData();
+  const { rooms, stays, payments, addStay, updateStay, removeStay, addPayment, hotel } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked, isStayLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -60,6 +61,7 @@ const Stays = () => {
   const [quickPaymentComment, setQuickPaymentComment] = useState("");
   const [quickPaymentError, setQuickPaymentError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteStayId, setDeleteStayId] = useState<string | null>(null);
 
   const getStayPaid = useCallback(
     (stayId: string) => payments.filter((p) => p.stay_id === stayId).reduce((s, p) => s + p.amount, 0),
@@ -429,6 +431,11 @@ const Stays = () => {
                       <Button variant="ghost" size="icon" onClick={() => openEdit(stay)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
                         <Pencil className="h-4 w-4" />
                       </Button>
+                      {(isAdmin || !locked) && (
+                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteStayId(stay.id)} aria-label={t.common.delete}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -437,6 +444,21 @@ const Stays = () => {
           </Table>
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!deleteStayId} onOpenChange={(open) => { if (!open) setDeleteStayId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.common.confirmDeleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (deleteStayId) removeStay(deleteStayId); setDeleteStayId(null); }}>
+              {t.common.delete}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-3xl">

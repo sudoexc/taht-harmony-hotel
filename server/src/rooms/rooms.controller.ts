@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { RoomsService } from './rooms.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { UserContextGuard } from '../common/guards/user-context.guard.js';
@@ -26,5 +26,10 @@ export class RoomsController {
   @Patch(':id')
   update(@CurrentUser() user: UserContext, @Param('id') id: string, @Body() dto: UpdateRoomDto) {
     return this.roomsService.update(user.hotelId, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: UserContext, @Param('id') id: string) {
+    return this.roomsService.remove(user.hotelId, id);
   }
 }

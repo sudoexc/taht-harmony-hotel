@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard.js';
 import { UserContextGuard } from '../common/guards/user-context.guard.js';
@@ -28,5 +28,10 @@ export class UsersController {
   @Patch(':id/role')
   updateRole(@CurrentUser() user: UserContext, @Param('id') id: string, @Body() dto: UpdateUserRoleDto) {
     return this.usersService.updateRole(user.hotelId, id, dto);
+  }
+
+  @Delete(':id')
+  remove(@CurrentUser() user: UserContext, @Param('id') id: string) {
+    return this.usersService.removeUser(user.hotelId, user.userId, id);
   }
 }
