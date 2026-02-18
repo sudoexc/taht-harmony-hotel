@@ -96,11 +96,13 @@ class LoginView(APIView):
         role = get_role(user.id)
         token = make_token(user, profile, role)
         data = {
-            'id': user.id,
-            'email': user.email,
-            'full_name': profile.full_name,
-            'role': role,
-            'hotel_id': profile.hotel_id,
+            'user': {
+                'id': user.id,
+                'email': user.email,
+                'full_name': profile.full_name,
+                'role': role,
+                'hotel_id': profile.hotel_id,
+            }
         }
         resp = Response(data)
         set_auth_cookie(resp, token)
@@ -125,11 +127,13 @@ class MeView(APIView):
         except Profile.DoesNotExist:
             return Response({'message': 'Profile not found'}, status=404)
         return Response({
-            'id': u.id,
-            'email': u.email,
-            'full_name': profile.full_name,
-            'role': u.role,  # from JWT
-            'hotel_id': u.hotel_id,
+            'user': {
+                'id': u.id,
+                'email': u.email,
+                'full_name': profile.full_name,
+                'role': u.role,  # from JWT
+                'hotel_id': u.hotel_id,
+            }
         })
 
 
