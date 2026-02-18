@@ -266,11 +266,66 @@ const Stays = () => {
     }
   };
 
+  // Summary stats
+  const summaryStats = useMemo(() => {
+    const active   = stays.filter(s => s.status === 'CHECKED_IN');
+    const booked   = stays.filter(s => s.status === 'BOOKED');
+    const totalDue = stays
+      .filter(s => s.status === 'CHECKED_IN' || s.status === 'BOOKED')
+      .reduce((sum, stay) => {
+        const total = getStayTotal(stay);
+        const paid  = getStayPaid(stay.id);
+        return sum + Math.max(0, total - paid);
+      }, 0);
+    return { active: active.length, booked: booked.length, totalDue };
+  }, [stays, getStayPaid]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t.stays.title}</h1>
-        <Button onClick={openAdd}><Plus className="mr-1 h-4 w-4" />{t.stays.addStay}</Button>
+        <h1 className="text-2xl font-bold tracking-tight">{t.stays.title}</h1>
+        <Button className="gradient-gold text-white border-0 hover:opacity-90 glow-gold-sm" onClick={openAdd}>
+          <Plus className="mr-1 h-4 w-4" />{t.stays.addStay}
+        </Button>
+      </div>
+
+      {/* Summary bar */}
+      <div className="grid grid-cols-3 gap-3">
+        <Card className="border-border/50">
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-success/10 border border-success/20">
+              <LogIn className="h-4 w-4 text-success" />
+            </div>
+            <div>
+              <p className="text-lg font-bold">{summaryStats.active}</p>
+              <p className="text-xs text-muted-foreground">Заселены</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-info/10 border border-info/20">
+              <Eye className="h-4 w-4 text-info" />
+            </div>
+            <div>
+              <p className="text-lg font-bold">{summaryStats.booked}</p>
+              <p className="text-xs text-muted-foreground">Бронь</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={`border-border/50 ${summaryStats.totalDue > 0 ? 'border-warning/30' : ''}`}>
+          <CardContent className="p-3 flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${summaryStats.totalDue > 0 ? 'bg-warning/10 border border-warning/20' : 'bg-muted border border-border'}`}>
+              <LogOut className={`h-4 w-4 ${summaryStats.totalDue > 0 ? 'text-warning' : 'text-muted-foreground'}`} />
+            </div>
+            <div>
+              <p className={`text-sm font-bold tabular-nums ${summaryStats.totalDue > 0 ? 'text-warning' : 'text-success'}`}>
+                {formatCurrency(summaryStats.totalDue, locale, t.common.currency)}
+              </p>
+              <p className="text-xs text-muted-foreground">Долг</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="flex flex-wrap gap-3">

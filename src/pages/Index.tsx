@@ -1,18 +1,49 @@
+import { useMemo } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LogIn, LogOut, BedDouble, DoorOpen, Plus } from "lucide-react";
-import { formatCurrency, formatDate, getStayTotal, getTodayInTimeZone } from "@/lib/format";
+import { LogIn, LogOut, BedDouble, DoorOpen, Plus, TrendingUp, AlertCircle, Wallet } from "lucide-react";
+import { formatCurrency, formatDate, getMonthKey, getMonthRange, getStayTotal, getTodayInTimeZone } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, hotel } = useData();
+  const { rooms, stays, payments, expenses, hotel } = useData();
   const navigate = useNavigate();
   const todayStr = getTodayInTimeZone(hotel.timezone);
+  const currentMonthKey = getMonthKey(todayStr);
+  const { start: monthStart, end: monthEnd } = getMonthRange(currentMonthKey);
+
+  // This month revenue
+  const thisMonthRevenue = useMemo(() =>
+    payments
+      .filter(p => { const d = p.paid_at.slice(0, 10); return d >= monthStart && d <= monthEnd; })
+      .reduce((s, p) => s + p.amount, 0),
+    [payments, monthStart, monthEnd]
+  );
+
+  // This month expenses
+  const thisMonthExpenses = useMemo(() =>
+    expenses
+      .filter(e => e.spent_at >= monthStart && e.spent_at <= monthEnd)
+      .reduce((s, e) => s + e.amount, 0),
+    [expenses, monthStart, monthEnd]
+  );
+
+  // Outstanding dues (all active/booked stays)
+  const totalOutstanding = useMemo(() =>
+    stays
+      .filter(s => s.status === 'CHECKED_IN' || s.status === 'BOOKED')
+      .reduce((sum, stay) => {
+        const total = getStayTotal(stay);
+        const paid = payments.filter(p => p.stay_id === stay.id).reduce((s, p) => s + p.amount, 0);
+        return sum + Math.max(0, total - paid);
+      }, 0),
+    [stays, payments]
+  );
   const locale = language === 'uz' ? 'uz-UZ' : 'ru-RU';
 
   const todayCheckIns = stays.filter(s => s.check_in_date === todayStr && s.status !== 'CANCELLED');
@@ -51,40 +82,90 @@ const Dashboard = () => {
     payments.filter(p => p.stay_id === stayId).reduce((s, p) => s + p.amount, 0);
 
   const stats = [
-    { label: t.dashboard.checkInsToday, value: todayCheckIns.length, icon: LogIn, color: 'text-info' },
-    { label: t.dashboard.checkOutsToday, value: todayCheckOuts.length, icon: LogOut, color: 'text-warning' },
-    { label: t.dashboard.occupiedRooms, value: occupiedRoomIds.size, icon: BedDouble, color: 'text-primary' },
-    { label: t.dashboard.availableRooms, value: activeRooms.length - occupiedRoomIds.size, icon: DoorOpen, color: 'text-success' },
+    { label: t.dashboard.checkInsToday, value: todayCheckIns.length, icon: LogIn, accent: 'text-info', bg: 'bg-info/10 border-info/20' },
+    { label: t.dashboard.checkOutsToday, value: todayCheckOuts.length, icon: LogOut, accent: 'text-warning', bg: 'bg-warning/10 border-warning/20' },
+    { label: t.dashboard.occupiedRooms, value: occupiedRoomIds.size, icon: BedDouble, accent: 'text-primary', bg: 'bg-primary/10 border-primary/20' },
+    { label: t.dashboard.availableRooms, value: activeRooms.length - occupiedRoomIds.size, icon: DoorOpen, accent: 'text-success', bg: 'bg-success/10 border-success/20' },
   ];
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{t.dashboard.title}</h1>
-          <p className="text-sm text-muted-foreground">{t.dashboard.today}: {formatDate(todayStr, locale)}</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t.dashboard.title}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t.dashboard.today}: {formatDate(todayStr, locale)}</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" onClick={() => navigate('/stays')}><Plus className="mr-1 h-4 w-4" />{t.dashboard.addStay}</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate('/payments')}><Plus className="mr-1 h-4 w-4" />{t.dashboard.addPayment}</Button>
-          <Button size="sm" variant="outline" onClick={() => navigate('/expenses')}><Plus className="mr-1 h-4 w-4" />{t.dashboard.addExpense}</Button>
+          <Button size="sm" className="gradient-gold text-white border-0 hover:opacity-90 glow-gold-sm" onClick={() => navigate('/stays')}>
+            <Plus className="mr-1 h-4 w-4" />{t.dashboard.addStay}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate('/payments')}>
+            <Plus className="mr-1 h-4 w-4" />{t.dashboard.addPayment}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => navigate('/expenses')}>
+            <Plus className="mr-1 h-4 w-4" />{t.dashboard.addExpense}
+          </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, i) => (
-          <Card key={i}>
-            <CardContent className="p-4 flex items-center gap-4">
-              <div className={`p-3 rounded-lg bg-muted ${stat.color}`}>
-                <stat.icon className="h-5 w-5" />
+          <Card key={i} className="border-border/50 hover:border-border transition-colors">
+            <CardContent className="p-5">
+              <div className={`inline-flex p-2.5 rounded-xl border mb-3 ${stat.bg}`}>
+                <stat.icon className={`h-5 w-5 ${stat.accent}`} />
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
-                <p className="text-2xl font-bold">{stat.value}</p>
-              </div>
+              <p className="text-3xl font-bold tracking-tight">{stat.value}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
             </CardContent>
           </Card>
         ))}
+      </div>
+
+      {/* Finance summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="border-border/50">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Выручка за месяц</p>
+              <div className="p-1.5 rounded-lg bg-success/10 border border-success/20">
+                <TrendingUp className="h-3.5 w-3.5 text-success" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-success">{formatCurrency(thisMonthRevenue, locale, t.common.currency)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{currentMonthKey}</p>
+          </CardContent>
+        </Card>
+        <Card className="border-border/50">
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Расходы за месяц</p>
+              <div className="p-1.5 rounded-lg bg-destructive/10 border border-destructive/20">
+                <Wallet className="h-3.5 w-3.5 text-destructive" />
+              </div>
+            </div>
+            <p className="text-xl font-bold text-destructive">{formatCurrency(thisMonthExpenses, locale, t.common.currency)}</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Прибыль: <span className={thisMonthRevenue - thisMonthExpenses >= 0 ? 'text-success' : 'text-destructive'}>
+                {formatCurrency(thisMonthRevenue - thisMonthExpenses, locale, t.common.currency)}
+              </span>
+            </p>
+          </CardContent>
+        </Card>
+        <Card className={`border-border/50 ${totalOutstanding > 0 ? 'border-warning/30' : ''}`}>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">Задолженность</p>
+              <div className={`p-1.5 rounded-lg ${totalOutstanding > 0 ? 'bg-warning/10 border border-warning/20' : 'bg-muted border border-border'}`}>
+                <AlertCircle className={`h-3.5 w-3.5 ${totalOutstanding > 0 ? 'text-warning' : 'text-muted-foreground'}`} />
+              </div>
+            </div>
+            <p className={`text-xl font-bold ${totalOutstanding > 0 ? 'text-warning' : 'text-success'}`}>
+              {formatCurrency(totalOutstanding, locale, t.common.currency)}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">По активным заездам</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card>
