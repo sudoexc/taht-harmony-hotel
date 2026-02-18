@@ -30,7 +30,7 @@ const STANDARD_METHODS: PaymentMethod[] = ['CASH', 'CARD', 'PAYME', 'CLICK'];
 
 const Payments = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addPayment, updatePayment, removePayment, hotel, customPaymentMethods } = useData();
+  const { rooms, stays, payments, addPayment, updatePayment, removePayment, hotel, customPaymentMethods, addCustomPaymentMethod } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -50,6 +50,9 @@ const Payments = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Payment | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [addMethodOpen, setAddMethodOpen] = useState(false);
+  const [newMethodName, setNewMethodName] = useState("");
+  const [addMethodError, setAddMethodError] = useState<string | null>(null);
 
   const getInfo = useCallback((stayId: string) => {
     const stay = stays.find((s) => s.id === stayId);
@@ -109,6 +112,21 @@ const Payments = () => {
     setFormComment(payment.comment || "");
     setFormError(null);
     setDialogOpen(true);
+  };
+
+  const handleAddMethod = async () => {
+    const name = newMethodName.trim();
+    if (!name) { setAddMethodError("Введите название"); return; }
+    try {
+      await addCustomPaymentMethod(name);
+      setFormMethodValue(name);
+      setFormMethod('OTHER');
+      setNewMethodName("");
+      setAddMethodError(null);
+      setAddMethodOpen(false);
+    } catch {
+      setAddMethodError("Метод уже существует или ошибка");
+    }
   };
 
   const paymentLocked = editingPayment ? isDateLocked(editingPayment.paid_at) : isDateLocked(formDate);
@@ -297,6 +315,11 @@ const Payments = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {isAdmin && (
+                  <button type="button" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }} className="text-xs text-primary hover:underline">
+                    ＋ Добавить метод оплаты
+                  </button>
+                )}
               </div>
             </div>
             <div className="space-y-2">
@@ -317,6 +340,28 @@ const Payments = () => {
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t.common.cancel}</Button>
             <Button onClick={handleSave} disabled={paymentLocked && !isAdmin}>{t.common.save}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addMethodOpen} onOpenChange={setAddMethodOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Новый метод оплаты</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Input
+              placeholder="Название (напр. Uzcard, Humo...)"
+              value={newMethodName}
+              onChange={(e) => { setNewMethodName(e.target.value); setAddMethodError(null); }}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddMethod()}
+              autoFocus
+            />
+            {addMethodError && <p className="text-sm text-destructive">{addMethodError}</p>}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setAddMethodOpen(false)}>{t.common.cancel}</Button>
+            <Button onClick={handleAddMethod}>{t.common.save}</Button>
           </div>
         </DialogContent>
       </Dialog>
