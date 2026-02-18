@@ -306,23 +306,25 @@ const Expenses = () => {
               </div>
               <div className="space-y-2">
                 <Label>{t.expenses.method}</Label>
-                <Select value={formMethodValue} onValueChange={(v) => { setFormMethodValue(v); setFormMethod(STANDARD_METHODS.includes(v as PaymentMethod) ? v as PaymentMethod : 'OTHER'); }}>
-                  <SelectTrigger disabled={expenseLocked && !isAdmin}><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
-                    <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
-                    <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
-                    <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
-                    {customPaymentMethods.map((m) => (
-                      <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {isAdmin && (
-                  <button type="button" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }} className="text-xs text-primary hover:underline">
-                    ＋ Добавить метод оплаты
-                  </button>
-                )}
+                <div className="flex gap-2">
+                  <Select value={formMethodValue} onValueChange={(v) => { setFormMethodValue(v); setFormMethod(STANDARD_METHODS.includes(v as PaymentMethod) ? v as PaymentMethod : 'OTHER'); }}>
+                    <SelectTrigger disabled={expenseLocked && !isAdmin}><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
+                      <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
+                      <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
+                      <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
+                      {customPaymentMethods.map((m) => (
+                        <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {isAdmin && (
+                    <Button type="button" variant="outline" size="icon" title="Добавить метод оплаты" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }}>
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
             <div className="space-y-2">
