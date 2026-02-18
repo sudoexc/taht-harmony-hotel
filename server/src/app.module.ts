@@ -11,6 +11,7 @@ import { PaymentsModule } from './payments/payments.module.js';
 import { ExpensesModule } from './expenses/expenses.module.js';
 import { ReportsModule } from './reports/reports.module.js';
 import { MonthClosingsModule } from './month-closings/month-closings.module.js';
+import { CustomPaymentMethodsModule } from './custom-payment-methods/custom-payment-methods.module.js';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor.js';
 import { HealthModule } from './health/health.module.js';
 
@@ -27,6 +28,7 @@ import { HealthModule } from './health/health.module.js';
     ExpensesModule,
     ReportsModule,
     MonthClosingsModule,
+    CustomPaymentMethodsModule,
     HealthModule,
   ],
   providers: [

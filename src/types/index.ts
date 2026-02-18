@@ -1,6 +1,6 @@
 export type RoomType = 'ECONOM' | 'STANDARD';
 export type StayStatus = 'BOOKED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
-export type PaymentMethod = 'CASH' | 'CARD' | 'PAYME' | 'CLICK';
+export type PaymentMethod = 'CASH' | 'CARD' | 'PAYME' | 'CLICK' | 'OTHER';
 export type ExpenseCategory = 'SALARY' | 'INVENTORY' | 'UTILITIES' | 'REPAIR' | 'MARKETING' | 'OTHER';
 export type UserRole = 'ADMIN' | 'MANAGER';
 
@@ -54,12 +54,19 @@ export interface Stay {
   comment: string;
 }
 
+export interface CustomPaymentMethod {
+  id: string;
+  name: string;
+  created_at: string;
+}
+
 export interface Payment {
   id: string;
   hotel_id: string;
   stay_id: string;
   paid_at: string;
   method: PaymentMethod;
+  custom_method_label: string | null;
   amount: number;
   comment: string;
 }
@@ -70,6 +77,7 @@ export interface Expense {
   spent_at: string;
   category: ExpenseCategory;
   method: PaymentMethod;
+  custom_method_label: string | null;
   amount: number;
   comment: string;
 }

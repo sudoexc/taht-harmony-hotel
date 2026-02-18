@@ -224,6 +224,7 @@ export const translations = {
       CARD: 'Карта',
       PAYME: 'Payme',
       CLICK: 'Click',
+      OTHER: 'Другой',
     },
     expenseCategory: {
       SALARY: 'Зарплата',
@@ -463,6 +464,7 @@ export const translations = {
       CARD: 'Karta',
       PAYME: 'Payme',
       CLICK: 'Click',
+      OTHER: 'Boshqa',
     },
     expenseCategory: {
       SALARY: 'Ish haqi',

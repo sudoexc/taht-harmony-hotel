@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { Expense, Hotel, MonthClosing, Payment, Room, Stay, UserWithRole } from '@/types';
+import { CustomPaymentMethod, Expense, Hotel, MonthClosing, Payment, Room, Stay, UserWithRole } from '@/types';
 import { apiFetch } from '@/lib/api';
 import { getDateOnly } from '@/lib/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,7 +13,10 @@ interface DataContextType {
   expenses: Expense[];
   monthClosings: MonthClosing[];
   users: UserWithRole[];
+  customPaymentMethods: CustomPaymentMethod[];
   loading: boolean;
+  addCustomPaymentMethod: (name: string) => Promise<void>;
+  removeCustomPaymentMethod: (id: string) => Promise<void>;
   addRoom: (room: Room) => Promise<void>;
   updateRoom: (room: Room) => Promise<void>;
   removeRoom: (roomId: string) => Promise<void>;
@@ -82,6 +85,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [monthClosings, setMonthClosings] = useState<MonthClosing[]>([]);
   const [users, setUsers] = useState<UserWithRole[]>([]);
+  const [customPaymentMethods, setCustomPaymentMethods] = useState<CustomPaymentMethod[]>([]);
   const [loading, setLoading] = useState(false);
 
   const refreshAll = useCallback(async () => {
@@ -89,7 +93,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const usersPromise = role === 'ADMIN' ? apiFetch<UserWithRole[]>('/users') : Promise.resolve([]);
-      const [hotelRes, roomsRes, staysRes, paymentsRes, expensesRes, closingsRes, usersRes] = await Promise.all([
+      const customMethodsPromise = role === 'ADMIN' ? apiFetch<CustomPaymentMethod[]>('/custom-payment-methods') : Promise.resolve([]);
+      const [hotelRes, roomsRes, staysRes, paymentsRes, expensesRes, closingsRes, usersRes, customMethodsRes] = await Promise.all([
         apiFetch<Hotel>('/hotels/me'),
         apiFetch<Room[]>('/rooms'),
         apiFetch<Stay[]>('/stays'),
@@ -97,6 +102,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         apiFetch<Expense[]>('/expenses'),
         apiFetch<MonthClosing[]>('/month-closings'),
         usersPromise,
+        customMethodsPromise,
       ]);
 
       setHotelState(hotelRes || EMPTY_HOTEL);
@@ -106,6 +112,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setExpenses((expensesRes || []).map(normalizeExpense));
       setMonthClosings(closingsRes || []);
       setUsers(usersRes || []);
+      setCustomPaymentMethods(customMethodsRes || []);
     } catch (error) {
       console.error('Failed to load data', error);
     } finally {
@@ -122,6 +129,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setExpenses([]);
       setMonthClosings([]);
       setUsers([]);
+      setCustomPaymentMethods([]);
       return;
     }
 
@@ -229,6 +237,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       stay_id: payment.stay_id,
       paid_at: payment.paid_at,
       method: payment.method,
+      custom_method_label: payment.custom_method_label,
       amount: payment.amount,
       comment: payment.comment,
     };
@@ -243,6 +252,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const payload = {
       paid_at: payment.paid_at,
       method: payment.method,
+      custom_method_label: payment.custom_method_label,
       amount: payment.amount,
       comment: payment.comment,
     };
@@ -263,6 +273,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       spent_at: expense.spent_at,
       category: expense.category,
       method: expense.method,
+      custom_method_label: expense.custom_method_label,
       amount: expense.amount,
       comment: expense.comment,
     };
@@ -278,6 +289,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       spent_at: expense.spent_at,
       category: expense.category,
       method: expense.method,
+      custom_method_label: expense.custom_method_label,
       amount: expense.amount,
       comment: expense.comment,
     };
@@ -314,6 +326,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeUser = async (userId: string) => {
     await apiFetch(`/users/${userId}`, { method: 'DELETE' });
     setUsers((prev) => prev.filter((u) => u.id !== userId));
+  };
+
+  const addCustomPaymentMethod = async (name: string) => {
+    const created = await apiFetch<CustomPaymentMethod>('/custom-payment-methods', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+    setCustomPaymentMethods((prev) => [...prev, created]);
+  };
+
+  const removeCustomPaymentMethod = async (id: string) => {
+    await apiFetch(`/custom-payment-methods/${id}`, { method: 'DELETE' });
+    setCustomPaymentMethods((prev) => prev.filter((m) => m.id !== id));
   };
 
   const closePreviousMonth = async () => {
@@ -358,6 +383,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         addUser,
         updateUserRole,
         removeUser,
+        customPaymentMethods,
+        addCustomPaymentMethod,
+        removeCustomPaymentMethod,
         closePreviousMonth,
         reopenMonth,
         isMonthClosed,

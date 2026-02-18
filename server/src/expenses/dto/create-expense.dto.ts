@@ -22,5 +22,9 @@ export class CreateExpenseDto {
 
   @IsOptional()
   @IsString()
+  custom_method_label?: string | null;
+
+  @IsOptional()
+  @IsString()
   comment?: string | null;
 }

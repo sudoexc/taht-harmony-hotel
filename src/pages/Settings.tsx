@@ -12,12 +12,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserRole } from "@/types";
-import { Trash2 } from "lucide-react";
+import { Trash2, Plus } from "lucide-react";
 
 const Settings = () => {
   const { t } = useLanguage();
-  const { hotel, setHotel, users, addUser, updateUserRole, removeUser } = useData();
+  const { hotel, setHotel, users, addUser, updateUserRole, removeUser, customPaymentMethods, addCustomPaymentMethod, removeCustomPaymentMethod } = useData();
   const { role, isAdmin, user: currentUser } = useAuth();
+  const [newMethodName, setNewMethodName] = useState("");
+  const [methodError, setMethodError] = useState<string | null>(null);
+  const [deleteMethodId, setDeleteMethodId] = useState<string | null>(null);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [hotelName, setHotelName] = useState(hotel.name);
   const [hotelTimezone, setHotelTimezone] = useState(hotel.timezone);
@@ -40,6 +43,18 @@ const Settings = () => {
     setUserFullName("");
     setUserRole("MANAGER");
     setUserError(null);
+  };
+
+  const handleAddMethod = async () => {
+    const name = newMethodName.trim();
+    if (!name) { setMethodError("Введите название"); return; }
+    try {
+      await addCustomPaymentMethod(name);
+      setNewMethodName("");
+      setMethodError(null);
+    } catch {
+      setMethodError("Метод уже существует или ошибка");
+    }
   };
 
   const handleCreateUser = async () => {
@@ -162,6 +177,57 @@ const Settings = () => {
           </CardContent>
         </Card>
       )}
+
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Методы оплаты</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Название метода (напр. Uzcard, Humo...)"
+                value={newMethodName}
+                onChange={(e) => { setNewMethodName(e.target.value); setMethodError(null); }}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddMethod()}
+                className="max-w-xs"
+              />
+              <Button size="sm" onClick={handleAddMethod}><Plus className="h-4 w-4 mr-1" />Добавить</Button>
+            </div>
+            {methodError && <p className="text-sm text-destructive">{methodError}</p>}
+            {customPaymentMethods.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {customPaymentMethods.map((m) => (
+                  <div key={m.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-sm">
+                    <span className="font-medium">{m.name}</span>
+                    <button onClick={() => setDeleteMethodId(m.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-1">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {customPaymentMethods.length === 0 && (
+              <p className="text-sm text-muted-foreground">Нет кастомных методов. Добавьте выше.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <AlertDialog open={!!deleteMethodId} onOpenChange={(open) => { if (!open) setDeleteMethodId(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t.common.confirmDeleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{t.common.confirmDeleteDescription}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t.common.cancel}</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { if (deleteMethodId) removeCustomPaymentMethod(deleteMethodId); setDeleteMethodId(null); }}>
+              {t.common.delete}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteUserId} onOpenChange={(open) => { if (!open) setDeleteUserId(null); }}>
         <AlertDialogContent>

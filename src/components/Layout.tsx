@@ -22,17 +22,26 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme();
   const { t, language } = useLanguage();
   const { user, signOut } = useAuth();
-  const { payments } = useData();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
 
+  const { payments, customPaymentMethods } = useData();
+
   const kassaStats = useMemo(() => {
-    const methods = ["CASH", "CARD", "PAYME", "CLICK"] as const;
-    const byMethod = Object.fromEntries(
-      methods.map((m) => [m, payments.filter((p) => p.method === m).reduce((s, p) => s + p.amount, 0)])
-    );
-    const total = methods.reduce((s, m) => s + byMethod[m], 0);
+    const standard = ["CASH", "CARD", "PAYME", "CLICK"] as const;
+    const byMethod: Record<string, number> = {};
+    for (const m of standard) {
+      byMethod[m] = payments.filter((p) => p.method === m).reduce((s, p) => s + p.amount, 0);
+    }
+    // Custom methods
+    for (const cm of customPaymentMethods) {
+      byMethod[cm.name] = payments.filter((p) => p.method === 'OTHER' && p.custom_method_label === cm.name).reduce((s, p) => s + p.amount, 0);
+    }
+    // Other unrecognized custom
+    const otherUnknown = payments.filter((p) => p.method === 'OTHER' && (!p.custom_method_label || !customPaymentMethods.find(cm => cm.name === p.custom_method_label))).reduce((s, p) => s + p.amount, 0);
+    if (otherUnknown > 0) byMethod['—'] = otherUnknown;
+    const total = Object.values(byMethod).reduce((s, v) => s + v, 0);
     return { total, byMethod };
-  }, [payments]);
+  }, [payments, customPaymentMethods]);
 
   return (
     <SidebarProvider>
@@ -66,13 +75,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <PopoverContent className="w-56 p-3" align="end">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-2">Касса</p>
                   <div className="space-y-1.5">
-                    {(["CASH", "CARD", "PAYME", "CLICK"] as const).map((method) => (
+                    {Object.entries(kassaStats.byMethod).filter(([, v]) => v > 0).map(([method, amount]) => (
                       <div key={method} className="flex items-center justify-between">
-                        <span className={`text-xs font-medium ${METHOD_COLORS[method]}`}>
-                          {t.paymentMethod[method]}
+                        <span className={`text-xs font-medium ${METHOD_COLORS[method] || 'text-foreground'}`}>
+                          {(t.paymentMethod as Record<string, string>)[method] ?? method}
                         </span>
                         <span className="text-xs tabular-nums text-foreground font-medium">
-                          {formatCurrency(kassaStats.byMethod[method], locale, t.common.currency)}
+                          {formatCurrency(amount, locale, t.common.currency)}
                         </span>
                       </div>
                     ))}

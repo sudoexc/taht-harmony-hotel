@@ -12,6 +12,7 @@ const mapPayment = (payment: PrismaPayment) => ({
   stay_id: payment.stayId,
   paid_at: payment.paidAt.toISOString(),
   method: payment.method,
+  custom_method_label: payment.customMethodLabel ?? null,
   amount: Number(payment.amount),
   comment: payment.comment ?? '',
   created_at: payment.createdAt.toISOString(),
@@ -55,6 +56,7 @@ export class PaymentsService {
         stayId: dto.stay_id,
         paidAt,
         method: dto.method ?? 'CASH',
+        customMethodLabel: dto.method === 'OTHER' ? (dto.custom_method_label ?? null) : null,
         amount: dto.amount,
         comment: dto.comment ?? null,
       },
@@ -81,6 +83,7 @@ export class PaymentsService {
       data: {
         paidAt: dto.paid_at ? paidAt : undefined,
         method: dto.method,
+        customMethodLabel: dto.method === 'OTHER' ? (dto.custom_method_label ?? null) : dto.method !== undefined ? null : undefined,
         amount: dto.amount,
         comment: dto.comment === undefined ? undefined : dto.comment,
       },

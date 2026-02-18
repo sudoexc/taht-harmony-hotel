@@ -24,6 +24,7 @@ enum PaymentMethod {
   CARD
   PAYME
   CLICK
+  OTHER
 }
 
 enum ExpenseCategory {
@@ -51,17 +52,18 @@ model User {
 }
 
 model Hotel {
-  id            String         @id @default(uuid())
-  name          String
-  timezone      String         @default("Asia/Tashkent")
-  createdAt     DateTime       @default(now())
-  profiles      Profile[]
-  rooms         Room[]
-  stays         Stay[]
-  payments      Payment[]
-  expenses      Expense[]
-  monthClosings MonthClosing[]
-  auditLogs     AuditLog[]
+  id                   String                @id @default(uuid())
+  name                 String
+  timezone             String                @default("Asia/Tashkent")
+  createdAt            DateTime              @default(now())
+  profiles             Profile[]
+  rooms                Room[]
+  stays                Stay[]
+  payments             Payment[]
+  expenses             Expense[]
+  monthClosings        MonthClosing[]
+  auditLogs            AuditLog[]
+  customPaymentMethods CustomPaymentMethod[]
 }
 
 model Profile {
@@ -120,28 +122,40 @@ model Stay {
 }
 
 model Payment {
-  id        String        @id @default(uuid())
-  hotelId   String
-  hotel     Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  stayId    String
-  stay      Stay          @relation(fields: [stayId], references: [id], onDelete: Cascade)
-  paidAt    DateTime      @default(now())
-  method    PaymentMethod @default(CASH)
-  amount    Decimal       @default(0)
-  comment   String?
-  createdAt DateTime      @default(now())
+  id                String        @id @default(uuid())
+  hotelId           String
+  hotel             Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  stayId            String
+  stay              Stay          @relation(fields: [stayId], references: [id], onDelete: Cascade)
+  paidAt            DateTime      @default(now())
+  method            PaymentMethod @default(CASH)
+  customMethodLabel String?
+  amount            Decimal       @default(0)
+  comment           String?
+  createdAt         DateTime      @default(now())
 }
 
 model Expense {
-  id        String          @id @default(uuid())
+  id                String          @id @default(uuid())
+  hotelId           String
+  hotel             Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  spentAt           DateTime        @default(now())
+  category          ExpenseCategory @default(OTHER)
+  method            PaymentMethod   @default(CASH)
+  customMethodLabel String?
+  amount            Decimal         @default(0)
+  comment           String?
+  createdAt         DateTime        @default(now())
+}
+
+model CustomPaymentMethod {
+  id        String   @id @default(uuid())
   hotelId   String
-  hotel     Hotel           @relation(fields: [hotelId], references: [id], onDelete: Cascade)
-  spentAt   DateTime        @default(now())
-  category  ExpenseCategory @default(OTHER)
-  method    PaymentMethod   @default(CASH)
-  amount    Decimal         @default(0)
-  comment   String?
-  createdAt DateTime        @default(now())
+  hotel     Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  name      String
+  createdAt DateTime @default(now())
+
+  @@unique([hotelId, name])
 }
 
 model MonthClosing {

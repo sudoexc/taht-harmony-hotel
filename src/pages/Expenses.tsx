@@ -26,9 +26,11 @@ import { formatCurrency, formatDate, getTodayInTimeZone } from "@/lib/format";
 import { Expense, ExpenseCategory, PaymentMethod } from "@/types";
 import { ApiError } from "@/lib/api";
 
+const STANDARD_METHODS: PaymentMethod[] = ['CASH', 'CARD', 'PAYME', 'CLICK'];
+
 const Expenses = () => {
   const { t, language } = useLanguage();
-  const { expenses, addExpense, updateExpense, removeExpense, hotel } = useData();
+  const { expenses, addExpense, updateExpense, removeExpense, hotel, customPaymentMethods } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -43,6 +45,7 @@ const Expenses = () => {
   const [formDate, setFormDate] = useState("");
   const [formCategory, setFormCategory] = useState<ExpenseCategory>("OTHER");
   const [formMethod, setFormMethod] = useState<PaymentMethod>("CASH");
+  const [formMethodValue, setFormMethodValue] = useState("CASH");
   const [formAmount, setFormAmount] = useState("");
   const [formComment, setFormComment] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
@@ -79,6 +82,7 @@ const Expenses = () => {
     setFormDate(getTodayInTimeZone(hotel.timezone));
     setFormCategory("OTHER");
     setFormMethod("CASH");
+    setFormMethodValue("CASH");
     setFormAmount("");
     setFormComment("");
     setFormError(null);
@@ -91,6 +95,7 @@ const Expenses = () => {
     setFormDate(expense.spent_at.split("T")[0]);
     setFormCategory(expense.category);
     setFormMethod(expense.method);
+    setFormMethodValue(expense.method === 'OTHER' ? (expense.custom_method_label || 'OTHER') : expense.method);
     setFormAmount(String(expense.amount));
     setFormComment(expense.comment || "");
     setFormError(null);
@@ -114,12 +119,14 @@ const Expenses = () => {
       return;
     }
 
+    const isCustom = !STANDARD_METHODS.includes(formMethodValue as PaymentMethod);
     const payload: Expense = {
       id: editingExpense?.id || `exp-${Date.now()}`,
       hotel_id: hotelId || "",
       spent_at: new Date(`${formDate}T12:00:00Z`).toISOString(),
       category: formCategory,
-      method: formMethod,
+      method: isCustom ? 'OTHER' : (formMethodValue as PaymentMethod),
+      custom_method_label: isCustom ? formMethodValue : null,
       amount,
       comment: formComment,
     };
@@ -229,7 +236,7 @@ const Expenses = () => {
                     </TableCell>
                     <TableCell className="font-medium">{formatCurrency(expense.amount, locale, t.common.currency)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{t.paymentMethod[expense.method]}</Badge>
+                      <Badge variant="outline">{expense.method === 'OTHER' ? (expense.custom_method_label || t.paymentMethod.OTHER) : t.paymentMethod[expense.method]}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{expense.comment}</TableCell>
                     <TableCell>
@@ -281,13 +288,16 @@ const Expenses = () => {
               </div>
               <div className="space-y-2">
                 <Label>{t.expenses.method}</Label>
-                <Select value={formMethod} onValueChange={(v) => setFormMethod(v as PaymentMethod)}>
+                <Select value={formMethodValue} onValueChange={(v) => { setFormMethodValue(v); setFormMethod(STANDARD_METHODS.includes(v as PaymentMethod) ? v as PaymentMethod : 'OTHER'); }}>
                   <SelectTrigger disabled={expenseLocked && !isAdmin}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
                     <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
                     <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
                     <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
+                    {customPaymentMethods.map((m) => (
+                      <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
