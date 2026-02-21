@@ -24,4 +24,6 @@ urlpatterns = [
     path('users/<str:pk>',                      views.UserDeleteView.as_view()),
     path('custom-payment-methods',              views.CustomPaymentMethodListCreateView.as_view()),
     path('custom-payment-methods/<str:pk>',     views.CustomPaymentMethodDeleteView.as_view()),
+    path('transfers',                           views.TransferListCreateView.as_view()),
+    path('transfers/<str:pk>',                  views.TransferDetailView.as_view()),
 ]

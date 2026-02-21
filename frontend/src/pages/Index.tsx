@@ -47,7 +47,7 @@ const Dashboard = () => {
   const locale = language === 'uz' ? 'uz-UZ' : 'ru-RU';
 
   const todayCheckIns = stays.filter(s => s.check_in_date === todayStr && s.status !== 'CANCELLED');
-  const todayCheckOuts = stays.filter(s => s.check_out_date === todayStr && s.status !== 'CANCELLED');
+  const todayCheckOuts = stays.filter(s => s.check_out_date === todayStr && s.status !== 'CANCELLED' && s.status !== 'CHECKED_OUT');
 
   const occupiedRoomIds = new Set(
     stays
@@ -67,7 +67,7 @@ const Dashboard = () => {
   const statusColors: Record<string, string> = {
     free: 'bg-success/15 text-success border-success/30',
     occupied: 'bg-primary/15 text-primary border-primary/30',
-    checkOutToday: 'bg-warning/15 text-warning border-warning/30',
+    checkOutToday: 'bg-destructive/15 text-destructive border-destructive/30',
     checkInToday: 'bg-info/15 text-info border-info/30',
   };
 
@@ -83,7 +83,7 @@ const Dashboard = () => {
 
   const stats = [
     { label: t.dashboard.checkInsToday, value: todayCheckIns.length, icon: LogIn, accent: 'text-info', bg: 'bg-info/10 border-info/20' },
-    { label: t.dashboard.checkOutsToday, value: todayCheckOuts.length, icon: LogOut, accent: 'text-warning', bg: 'bg-warning/10 border-warning/20' },
+    { label: t.dashboard.checkOutsToday, value: todayCheckOuts.length, icon: LogOut, accent: 'text-destructive', bg: 'bg-destructive/10 border-destructive/20' },
     { label: t.dashboard.occupiedRooms, value: occupiedRoomIds.size, icon: BedDouble, accent: 'text-primary', bg: 'bg-primary/10 border-primary/20' },
     { label: t.dashboard.availableRooms, value: activeRooms.length - occupiedRoomIds.size, icon: DoorOpen, accent: 'text-success', bg: 'bg-success/10 border-success/20' },
   ];
@@ -127,7 +127,7 @@ const Dashboard = () => {
         <Card className="border-border/50">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Выручка за месяц</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">{t.dashboard.monthRevenue}</p>
               <div className="p-1.5 rounded-lg bg-success/10 border border-success/20">
                 <TrendingUp className="h-3.5 w-3.5 text-success" />
               </div>
@@ -139,14 +139,14 @@ const Dashboard = () => {
         <Card className="border-border/50">
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Расходы за месяц</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">{t.dashboard.monthExpenses}</p>
               <div className="p-1.5 rounded-lg bg-destructive/10 border border-destructive/20">
                 <Wallet className="h-3.5 w-3.5 text-destructive" />
               </div>
             </div>
             <p className="text-xl font-bold text-destructive">{formatCurrency(thisMonthExpenses, locale, t.common.currency)}</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Прибыль: <span className={thisMonthRevenue - thisMonthExpenses >= 0 ? 'text-success' : 'text-destructive'}>
+              {t.dashboard.profit}: <span className={thisMonthRevenue - thisMonthExpenses >= 0 ? 'text-success' : 'text-destructive'}>
                 {formatCurrency(thisMonthRevenue - thisMonthExpenses, locale, t.common.currency)}
               </span>
             </p>
@@ -155,7 +155,7 @@ const Dashboard = () => {
         <Card className={`border-border/50 ${totalOutstanding > 0 ? 'border-warning/30' : ''}`}>
           <CardContent className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground">Задолженность</p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground">{t.dashboard.debt}</p>
               <div className={`p-1.5 rounded-lg ${totalOutstanding > 0 ? 'bg-warning/10 border border-warning/20' : 'bg-muted border border-border'}`}>
                 <AlertCircle className={`h-3.5 w-3.5 ${totalOutstanding > 0 ? 'text-warning' : 'text-muted-foreground'}`} />
               </div>
@@ -163,7 +163,7 @@ const Dashboard = () => {
             <p className={`text-xl font-bold ${totalOutstanding > 0 ? 'text-warning' : 'text-success'}`}>
               {formatCurrency(totalOutstanding, locale, t.common.currency)}
             </p>
-            <p className="text-xs text-muted-foreground mt-1">По активным заездам</p>
+            <p className="text-xs text-muted-foreground mt-1">{t.dashboard.byActiveStays}</p>
           </CardContent>
         </Card>
       </div>

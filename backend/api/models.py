@@ -108,6 +108,7 @@ class Expense(models.Model):
     amount = models.DecimalField(max_digits=20, decimal_places=2)
     comment = models.TextField(null=True, blank=True)
     created_at = models.DateTimeField(db_column='createdAt')
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, db_column='createdBy', related_name='expenses')
 
     class Meta:
         managed = False
@@ -137,3 +138,18 @@ class CustomPaymentMethod(models.Model):
         managed = False
         db_table = '"CustomPaymentMethod"'
         unique_together = [('hotel', 'name')]
+
+
+class Transfer(models.Model):
+    id = models.CharField(max_length=36, primary_key=True)
+    hotel = models.ForeignKey(Hotel, on_delete=models.CASCADE, db_column='hotelId')
+    transferred_at = models.DateTimeField(db_column='transferredAt')
+    from_method = models.CharField(max_length=100, db_column='fromMethod')
+    to_method = models.CharField(max_length=100, db_column='toMethod')
+    amount = models.DecimalField(max_digits=20, decimal_places=2)
+    comment = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(db_column='createdAt')
+
+    class Meta:
+        managed = False
+        db_table = '"Transfer"'

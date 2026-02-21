@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { CustomPaymentMethod, Expense, Hotel, MonthClosing, Payment, Room, Stay, UserWithRole } from '@/types';
+import { CustomPaymentMethod, Expense, Hotel, MonthClosing, Payment, Room, Stay, Transfer, UserWithRole } from '@/types';
 import { apiFetch } from '@/lib/api';
 import { getDateOnly } from '@/lib/format';
 import { useAuth } from '@/contexts/AuthContext';
@@ -11,6 +11,7 @@ interface DataContextType {
   stays: Stay[];
   payments: Payment[];
   expenses: Expense[];
+  transfers: Transfer[];
   monthClosings: MonthClosing[];
   users: UserWithRole[];
   customPaymentMethods: CustomPaymentMethod[];
@@ -29,7 +30,10 @@ interface DataContextType {
   addExpense: (expense: Expense) => Promise<void>;
   updateExpense: (expense: Expense) => Promise<void>;
   removeExpense: (expenseId: string) => Promise<void>;
-  addUser: (payload: { full_name: string; email: string; password: string; role: UserWithRole['role'] }) => Promise<void>;
+  addTransfer: (transfer: { transferred_at: string; from_method: string; to_method: string; amount: number; comment: string }) => Promise<void>;
+  updateTransfer: (transfer: Transfer) => Promise<void>;
+  removeTransfer: (transferId: string) => Promise<void>;
+  addUser: (payload: { full_name: string; username: string; password: string; role: UserWithRole['role'] }) => Promise<void>;
   updateUserRole: (userId: string, role: UserWithRole['role']) => Promise<void>;
   removeUser: (userId: string) => Promise<void>;
   closePreviousMonth: () => Promise<void>;
@@ -83,6 +87,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [stays, setStays] = useState<Stay[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
   const [monthClosings, setMonthClosings] = useState<MonthClosing[]>([]);
   const [users, setUsers] = useState<UserWithRole[]>([]);
   const [customPaymentMethods, setCustomPaymentMethods] = useState<CustomPaymentMethod[]>([]);
@@ -93,13 +98,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     try {
       const usersPromise = role === 'ADMIN' ? apiFetch<UserWithRole[]>('/users') : Promise.resolve([]);
-      const customMethodsPromise = role === 'ADMIN' ? apiFetch<CustomPaymentMethod[]>('/custom-payment-methods') : Promise.resolve([]);
-      const [hotelRes, roomsRes, staysRes, paymentsRes, expensesRes, closingsRes, usersRes, customMethodsRes] = await Promise.all([
+      const customMethodsPromise = apiFetch<CustomPaymentMethod[]>('/custom-payment-methods');
+      const [hotelRes, roomsRes, staysRes, paymentsRes, expensesRes, transfersRes, closingsRes, usersRes, customMethodsRes] = await Promise.all([
         apiFetch<Hotel>('/hotels/me'),
         apiFetch<Room[]>('/rooms'),
         apiFetch<Stay[]>('/stays'),
         apiFetch<Payment[]>('/payments'),
         apiFetch<Expense[]>('/expenses'),
+        apiFetch<Transfer[]>('/transfers'),
         apiFetch<MonthClosing[]>('/month-closings'),
         usersPromise,
         customMethodsPromise,
@@ -110,6 +116,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setStays((staysRes || []).map(normalizeStay));
       setPayments((paymentsRes || []).map(normalizePayment));
       setExpenses((expensesRes || []).map(normalizeExpense));
+      setTransfers((transfersRes || []).map(t => ({ ...t, amount: Number(t.amount) })));
       setMonthClosings(closingsRes || []);
       setUsers(usersRes || []);
       setCustomPaymentMethods(customMethodsRes || []);
@@ -127,6 +134,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setStays([]);
       setPayments([]);
       setExpenses([]);
+      setTransfers([]);
       setMonthClosings([]);
       setUsers([]);
       setCustomPaymentMethods([]);
@@ -307,7 +315,35 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const isMonthClosed = (month: string) => monthClosings.some((closing) => closing.month === month);
 
-  const addUser = async (payload: { full_name: string; email: string; password: string; role: UserWithRole['role'] }) => {
+  const addTransfer = async (payload: { transferred_at: string; from_method: string; to_method: string; amount: number; comment: string }) => {
+    const created = await apiFetch<Transfer>('/transfers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    setTransfers((prev) => [{ ...created, amount: Number(created.amount) }, ...prev]);
+  };
+
+  const updateTransfer = async (transfer: Transfer) => {
+    const payload = {
+      transferred_at: transfer.transferred_at,
+      from_method: transfer.from_method,
+      to_method: transfer.to_method,
+      amount: transfer.amount,
+      comment: transfer.comment,
+    };
+    const updated = await apiFetch<Transfer>(`/transfers/${transfer.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+    setTransfers((prev) => prev.map((t) => (t.id === transfer.id ? { ...updated, amount: Number(updated.amount) } : t)));
+  };
+
+  const removeTransfer = async (transferId: string) => {
+    await apiFetch(`/transfers/${transferId}`, { method: 'DELETE' });
+    setTransfers((prev) => prev.filter((t) => t.id !== transferId));
+  };
+
+  const addUser = async (payload: { full_name: string; username: string; password: string; role: UserWithRole['role'] }) => {
     const created = await apiFetch<UserWithRole>('/users', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -365,6 +401,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         stays,
         payments,
         expenses,
+        transfers,
+        addTransfer,
+        updateTransfer,
+        removeTransfer,
         monthClosings,
         users,
         loading,

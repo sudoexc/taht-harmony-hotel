@@ -13,10 +13,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Pencil, Eye, LogIn, LogOut, Trash2 } from "lucide-react";
+import { Plus, Search, Pencil, Eye, LogIn, LogOut, Trash2, List, LayoutGrid } from "lucide-react";
 import { formatCurrency, formatDate, getNights, getStayTotal, getTodayInTimeZone, shiftDateStr } from "@/lib/format";
-import { PaymentMethod, Stay, StayStatus } from "@/types";
+import { Stay, StayStatus } from "@/types";
 import { ApiError } from "@/lib/api";
+import { StaysChessBoard } from "@/components/StaysChessBoard";
 
 const stayStatusColors: Record<string, string> = {
   BOOKED: "bg-info/15 text-info",
@@ -27,7 +28,7 @@ const stayStatusColors: Record<string, string> = {
 
 const Stays = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addStay, updateStay, removeStay, addPayment, hotel } = useData();
+  const { rooms, stays, payments, addStay, updateStay, removeStay, addPayment, hotel, customPaymentMethods } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked, isStayLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -35,6 +36,8 @@ const Stays = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortKey, setSortKey] = useState("checkInDesc");
+
+  const [viewMode, setViewMode] = useState<"list" | "chess">("list");
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStay, setEditingStay] = useState<Stay | null>(null);
@@ -55,7 +58,7 @@ const Stays = () => {
   const [formComment, setFormComment] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [quickPaymentMethod, setQuickPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [quickPaymentMethod, setQuickPaymentMethod] = useState("");
   const [quickPaymentAmount, setQuickPaymentAmount] = useState("");
   const [quickPaymentDate, setQuickPaymentDate] = useState("");
   const [quickPaymentComment, setQuickPaymentComment] = useState("");
@@ -71,6 +74,15 @@ const Stays = () => {
   const getRoomNumber = useCallback(
     (roomId: string) => rooms.find((r) => r.id === roomId)?.number || "?",
     [rooms],
+  );
+
+  const getRoomLabel = useCallback(
+    (roomId: string) => {
+      const room = rooms.find((r) => r.id === roomId);
+      if (!room) return "?";
+      return `#${room.number} · ${room.capacity} ${t.rooms.beds}`;
+    },
+    [rooms, t.rooms.beds],
   );
 
   const filtered = useMemo(() => {
@@ -114,9 +126,10 @@ const Stays = () => {
     });
   }, [stays, search, statusFilter, sortKey, getRoomNumber, getStayPaid]);
 
+  const todayStr = getTodayInTimeZone(hotel.timezone);
+
   const openAdd = () => {
     const defaultRoom = rooms[0];
-    const todayStr = getTodayInTimeZone(hotel.timezone);
     setEditingStay(null);
     setFormGuestName("");
     setFormGuestPhone("");
@@ -172,6 +185,38 @@ const Stays = () => {
   const totalWarning = total < 0 ? t.validation.totalNegative : null;
   const stayLocked = editingStay ? isStayLocked(editingStay) : isStayLocked(candidateStay);
 
+  // Stays whose "Check In" button should be disabled (another CHECKED_IN stay overlaps same room)
+  const checkinBlockedStayIds = useMemo(() => {
+    const blocked = new Set<string>();
+    for (const s of stays) {
+      if (s.status !== "BOOKED") continue;
+      const isBlocked = stays.some(
+        (other) =>
+          other.id !== s.id &&
+          other.room_id === s.room_id &&
+          other.status === "CHECKED_IN" &&
+          other.check_in_date < s.check_out_date &&
+          other.check_out_date > s.check_in_date,
+      );
+      if (isBlocked) blocked.add(s.id);
+    }
+    return blocked;
+  }, [stays]);
+
+  // Rooms blocked by an existing BOOKED/CHECKED_IN stay that overlaps the selected dates
+  const blockedRoomIds = useMemo(() => {
+    const blocked = new Set<string>();
+    if (!formCheckIn || !formCheckOut) return blocked;
+    for (const s of stays) {
+      if (editingStay && s.id === editingStay.id) continue;
+      if (s.status !== "CHECKED_IN" && s.status !== "BOOKED") continue;
+      if (s.check_in_date < formCheckOut && s.check_out_date > formCheckIn) {
+        blocked.add(s.room_id);
+      }
+    }
+    return blocked;
+  }, [stays, formCheckIn, formCheckOut, editingStay]);
+
   const handleSave = async () => {
     if (!formGuestName || !formRoomId || !formCheckIn || !formCheckOut) {
       setFormError(t.validation.required);
@@ -183,6 +228,10 @@ const Stays = () => {
     }
     if (stayLocked && !isAdmin) {
       setFormError(t.validation.closedMonthEdit);
+      return;
+    }
+    if ((formStatus === "CHECKED_IN" || formStatus === "BOOKED") && blockedRoomIds.has(formRoomId)) {
+      setFormError(t.validation.overlap);
       return;
     }
 
@@ -209,7 +258,7 @@ const Stays = () => {
 
   const openDetails = (stay: Stay) => {
     setDetailsStayId(stay.id);
-    setQuickPaymentMethod("CASH");
+    setQuickPaymentMethod(customPaymentMethods[0]?.name || "");
     setQuickPaymentAmount("");
     setQuickPaymentDate(stay.check_in_date);
     setQuickPaymentComment("");
@@ -241,7 +290,8 @@ const Stays = () => {
       hotel_id: hotelId,
       stay_id: detailsStay.id,
       paid_at: new Date(`${quickPaymentDate}T12:00:00Z`).toISOString(),
-      method: quickPaymentMethod,
+      method: 'OTHER',
+      custom_method_label: quickPaymentMethod,
       amount,
       comment: quickPaymentComment,
     });
@@ -286,9 +336,20 @@ const Stays = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{t.stays.title}</h1>
-        <Button className="gradient-gold text-white border-0 hover:opacity-90 glow-gold-sm" onClick={openAdd}>
-          <Plus className="mr-1 h-4 w-4" />{t.stays.addStay}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9"
+            onClick={() => setViewMode((v) => (v === "list" ? "chess" : "list"))}
+            title={viewMode === "list" ? t.stays.chessView : t.stays.listView}
+          >
+            {viewMode === "list" ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
+          </Button>
+          <Button className="gradient-gold text-white border-0 hover:opacity-90 glow-gold-sm" onClick={openAdd}>
+            <Plus className="mr-1 h-4 w-4" />{t.stays.addStay}
+          </Button>
+        </div>
       </div>
 
       {/* Summary bar */}
@@ -300,7 +361,7 @@ const Stays = () => {
             </div>
             <div>
               <p className="text-lg font-bold">{summaryStats.active}</p>
-              <p className="text-xs text-muted-foreground">Заселены</p>
+              <p className="text-xs text-muted-foreground">{t.stays.checkedIn}</p>
             </div>
           </CardContent>
         </Card>
@@ -311,7 +372,7 @@ const Stays = () => {
             </div>
             <div>
               <p className="text-lg font-bold">{summaryStats.booked}</p>
-              <p className="text-xs text-muted-foreground">Бронь</p>
+              <p className="text-xs text-muted-foreground">{t.stays.booked}</p>
             </div>
           </CardContent>
         </Card>
@@ -324,126 +385,146 @@ const Stays = () => {
               <p className={`text-sm font-bold tabular-nums ${summaryStats.totalDue > 0 ? 'text-warning' : 'text-success'}`}>
                 {formatCurrency(summaryStats.totalDue, locale, t.common.currency)}
               </p>
-              <p className="text-xs text-muted-foreground">Долг</p>
+              <p className="text-xs text-muted-foreground">{t.stays.debt}</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="flex flex-wrap gap-3">
-        <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder={t.common.search} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
-        </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t.common.all}</SelectItem>
-            <SelectItem value="BOOKED">{t.status.BOOKED}</SelectItem>
-            <SelectItem value="CHECKED_IN">{t.status.CHECKED_IN}</SelectItem>
-            <SelectItem value="CHECKED_OUT">{t.status.CHECKED_OUT}</SelectItem>
-            <SelectItem value="CANCELLED">{t.status.CANCELLED}</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={sortKey} onValueChange={setSortKey}>
-          <SelectTrigger className="w-[220px]"><SelectValue placeholder={t.common.sort} /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="checkInDesc">{t.sorting.checkInDesc}</SelectItem>
-            <SelectItem value="checkInAsc">{t.sorting.checkInAsc}</SelectItem>
-            <SelectItem value="checkOutDesc">{t.sorting.checkOutDesc}</SelectItem>
-            <SelectItem value="checkOutAsc">{t.sorting.checkOutAsc}</SelectItem>
-            <SelectItem value="totalDesc">{t.sorting.totalDesc}</SelectItem>
-            <SelectItem value="totalAsc">{t.sorting.totalAsc}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      {viewMode === "chess" ? (
+        <StaysChessBoard
+          rooms={rooms}
+          stays={stays}
+          todayStr={todayStr}
+          locale={locale}
+          labels={{
+            room: t.stays.room,
+            today: t.dashboard.today,
+            roomTypes: t.roomType,
+            noData: t.common.noData,
+            beds: t.rooms.beds,
+          }}
+          onOpenDetails={openDetails}
+        />
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-3">
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder={t.common.search} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t.common.all}</SelectItem>
+                <SelectItem value="BOOKED">{t.status.BOOKED}</SelectItem>
+                <SelectItem value="CHECKED_IN">{t.status.CHECKED_IN}</SelectItem>
+                <SelectItem value="CHECKED_OUT">{t.status.CHECKED_OUT}</SelectItem>
+                <SelectItem value="CANCELLED">{t.status.CANCELLED}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortKey} onValueChange={setSortKey}>
+              <SelectTrigger className="w-[220px]"><SelectValue placeholder={t.common.sort} /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="checkInDesc">{t.sorting.checkInDesc}</SelectItem>
+                <SelectItem value="checkInAsc">{t.sorting.checkInAsc}</SelectItem>
+                <SelectItem value="checkOutDesc">{t.sorting.checkOutDesc}</SelectItem>
+                <SelectItem value="checkOutAsc">{t.sorting.checkOutAsc}</SelectItem>
+                <SelectItem value="totalDesc">{t.sorting.totalDesc}</SelectItem>
+                <SelectItem value="totalAsc">{t.sorting.totalAsc}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-      {actionError && (
-        <div className="text-sm text-destructive">{actionError}</div>
-      )}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t.stays.room}</TableHead>
-                <TableHead>{t.stays.guest}</TableHead>
-                <TableHead>{t.stays.checkIn}</TableHead>
-                <TableHead>{t.stays.checkOut}</TableHead>
-                <TableHead>{t.stays.nights}</TableHead>
-                <TableHead>{t.stays.total}</TableHead>
-                <TableHead>{t.stays.paid}</TableHead>
-                <TableHead>{t.stays.due}</TableHead>
-                <TableHead>{t.stays.status}</TableHead>
-                <TableHead>{t.common.actions}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map(stay => {
-                const stayNights = getNights(stay.check_in_date, stay.check_out_date);
-                const totalAmount = getStayTotal(stay);
-                const paid = getStayPaid(stay.id);
-                const due = totalAmount - paid;
-                const locked = isStayLocked(stay);
-                return (
-                  <TableRow key={stay.id}>
-                    <TableCell className="font-medium">#{getRoomNumber(stay.room_id)}</TableCell>
-                    <TableCell>{stay.guest_name}</TableCell>
-                    <TableCell>{stay.check_in_date}</TableCell>
-                    <TableCell>{stay.check_out_date}</TableCell>
-                    <TableCell>{stayNights}</TableCell>
-                    <TableCell>{formatCurrency(totalAmount, locale, t.common.currency)}</TableCell>
-                    <TableCell>{formatCurrency(paid, locale, t.common.currency)}</TableCell>
-                    <TableCell className={due > 0 ? 'text-destructive font-medium' : 'text-success font-medium'}>
-                      {formatCurrency(due, locale, t.common.currency)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={stayStatusColors[stay.status]}>
-                        {t.status[stay.status as keyof typeof t.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="flex items-center gap-1">
-                      {stay.status === "BOOKED" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleStatusChange(stay, "CHECKED_IN")}
-                          disabled={locked && !isAdmin}
-                        >
-                          <LogIn className="h-4 w-4 mr-1" />
-                          {t.stays.checkInAction}
-                        </Button>
-                      )}
-                      {stay.status === "CHECKED_IN" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleStatusChange(stay, "CHECKED_OUT")}
-                          disabled={locked && !isAdmin}
-                        >
-                          <LogOut className="h-4 w-4 mr-1" />
-                          {t.stays.checkOutAction}
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" onClick={() => openDetails(stay)} aria-label={t.common.view}>
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(stay)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      {(isAdmin || !locked) && (
-                        <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteStayId(stay.id)} aria-label={t.common.delete}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </TableCell>
+          {actionError && (
+            <div className="text-sm text-destructive">{actionError}</div>
+          )}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t.stays.room}</TableHead>
+                    <TableHead>{t.stays.guest}</TableHead>
+                    <TableHead>{t.stays.checkIn}</TableHead>
+                    <TableHead>{t.stays.checkOut}</TableHead>
+                    <TableHead>{t.stays.nights}</TableHead>
+                    <TableHead>{t.stays.total}</TableHead>
+                    <TableHead>{t.stays.paid}</TableHead>
+                    <TableHead>{t.stays.due}</TableHead>
+                    <TableHead>{t.stays.status}</TableHead>
+                    <TableHead>{t.common.actions}</TableHead>
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(stay => {
+                    const stayNights = getNights(stay.check_in_date, stay.check_out_date);
+                    const totalAmount = getStayTotal(stay);
+                    const paid = getStayPaid(stay.id);
+                    const due = totalAmount - paid;
+                    const locked = isStayLocked(stay);
+                    return (
+                      <TableRow key={stay.id}>
+                        <TableCell className="font-medium">{getRoomLabel(stay.room_id)}</TableCell>
+                        <TableCell>{stay.guest_name}</TableCell>
+                        <TableCell>{stay.check_in_date}</TableCell>
+                        <TableCell>{stay.check_out_date}</TableCell>
+                        <TableCell>{stayNights}</TableCell>
+                        <TableCell>{formatCurrency(totalAmount, locale, t.common.currency)}</TableCell>
+                        <TableCell>{formatCurrency(paid, locale, t.common.currency)}</TableCell>
+                        <TableCell className={due > 0 ? 'text-destructive font-medium' : 'text-success font-medium'}>
+                          {formatCurrency(due, locale, t.common.currency)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={stayStatusColors[stay.status]}>
+                            {t.status[stay.status as keyof typeof t.status]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="flex items-center gap-1">
+                          {stay.status === "BOOKED" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleStatusChange(stay, "CHECKED_IN")}
+                              disabled={(locked && !isAdmin) || checkinBlockedStayIds.has(stay.id)}
+                              title={checkinBlockedStayIds.has(stay.id) ? t.validation.overlap : undefined}
+                            >
+                              <LogIn className="h-4 w-4 mr-1" />
+                              {t.stays.checkInAction}
+                            </Button>
+                          )}
+                          {stay.status === "CHECKED_IN" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleStatusChange(stay, "CHECKED_OUT")}
+                              disabled={locked && !isAdmin}
+                            >
+                              <LogOut className="h-4 w-4 mr-1" />
+                              {t.stays.checkOutAction}
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="icon" onClick={() => openDetails(stay)} aria-label={t.common.view}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(stay)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          {(isAdmin || !locked) && stay.status !== "CHECKED_IN" && !payments.some(p => p.stay_id === stay.id) && (
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteStayId(stay.id)} aria-label={t.common.delete}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <AlertDialog open={!!deleteStayId} onOpenChange={(open) => { if (!open) setDeleteStayId(null); }}>
         <AlertDialogContent>
@@ -479,12 +560,26 @@ const Stays = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t.stays.room}</Label>
-                <Select value={formRoomId} onValueChange={setFormRoomId}>
+                <Select
+                  value={formRoomId}
+                  onValueChange={(id) => {
+                    setFormRoomId(id);
+                    if (!editingStay) {
+                      const room = rooms.find((r) => r.id === id);
+                      if (room) setFormPrice(String(room.base_price));
+                    }
+                  }}
+                >
                   <SelectTrigger disabled={stayLocked && !isAdmin}><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {rooms.map((room) => (
-                      <SelectItem key={room.id} value={room.id}>#{room.number} · {t.roomType[room.room_type]}</SelectItem>
-                    ))}
+                    {rooms.map((room) => {
+                      const occupied = blockedRoomIds.has(room.id);
+                      return (
+                        <SelectItem key={room.id} value={room.id} disabled={occupied}>
+                          #{room.number} · {t.roomType[room.room_type]} · {room.capacity} {t.rooms.beds}{occupied ? ` · ${t.validation.occupied}` : ""}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -574,7 +669,7 @@ const Stays = () => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground">{t.stays.room}</p>
-                  <p className="text-sm font-medium">#{getRoomNumber(detailsStay.room_id)}</p>
+                  <p className="text-sm font-medium">{getRoomLabel(detailsStay.room_id)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground">{t.stays.guest}</p>
@@ -646,6 +741,8 @@ const Stays = () => {
                         size="sm"
                         variant="outline"
                         onClick={() => handleStatusChange(detailsStay, "CHECKED_IN")}
+                        disabled={checkinBlockedStayIds.has(detailsStay.id)}
+                        title={checkinBlockedStayIds.has(detailsStay.id) ? t.validation.overlap : undefined}
                       >
                         <LogIn className="h-4 w-4 mr-1" />
                         {t.stays.checkInAction}
@@ -670,13 +767,17 @@ const Stays = () => {
                   </div>
                   <div className="space-y-1">
                     <Label>{t.payments.method}</Label>
-                    <Select value={quickPaymentMethod} onValueChange={(v) => setQuickPaymentMethod(v as PaymentMethod)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    <Select value={quickPaymentMethod} onValueChange={setQuickPaymentMethod}>
+                      <SelectTrigger><SelectValue placeholder={t.finance.register} /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="CASH">{t.paymentMethod.CASH}</SelectItem>
-                        <SelectItem value="CARD">{t.paymentMethod.CARD}</SelectItem>
-                        <SelectItem value="PAYME">{t.paymentMethod.PAYME}</SelectItem>
-                        <SelectItem value="CLICK">{t.paymentMethod.CLICK}</SelectItem>
+                        {customPaymentMethods.map((m) => (
+                          <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
+                        ))}
+                        {customPaymentMethods.length === 0 && (
+                          <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                            {t.stays.noRegisters}
+                          </div>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

@@ -4,7 +4,7 @@ import { apiFetch } from '@/lib/api';
 
 interface AuthUser {
   id: string;
-  email: string;
+  username: string;
   full_name: string;
   role: UserRole;
   hotel_id: string;
@@ -16,7 +16,7 @@ interface AuthContextType {
   hotelId: string | null;
   loading: boolean;
   isAdmin: boolean;
-  signIn: (email: string, password: string) => Promise<{ error?: string }>;
+  signIn: (username: string, password: string) => Promise<{ error?: string }>;
   signOut: () => void;
 }
 
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
 
-    apiFetch<{ user: AuthUser }>('/me')
+    apiFetch<{ user: AuthUser }>('/auth/me')
       .then((res) => {
         if (!active) return;
         setUser(res.user);
@@ -53,12 +53,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (username: string, password: string) => {
     setLoading(true);
     try {
       const res = await apiFetch<{ user: AuthUser }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       setUser(res.user);

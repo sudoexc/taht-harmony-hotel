@@ -25,7 +25,7 @@ const Settings = () => {
   const [hotelName, setHotelName] = useState(hotel.name);
   const [hotelTimezone, setHotelTimezone] = useState(hotel.timezone);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState("");
+  const [userUsername, setUserUsername] = useState("");
   const [userPassword, setUserPassword] = useState("");
   const [userFullName, setUserFullName] = useState("");
   const [userRole, setUserRole] = useState<UserRole>("MANAGER");
@@ -38,7 +38,7 @@ const Settings = () => {
   }, [hotel.name, hotel.timezone]);
 
   const resetUserForm = () => {
-    setUserEmail("");
+    setUserUsername("");
     setUserPassword("");
     setUserFullName("");
     setUserRole("MANAGER");
@@ -58,13 +58,8 @@ const Settings = () => {
   };
 
   const handleCreateUser = async () => {
-    if (!userEmail || !userPassword || !userFullName) {
+    if (!userUsername || !userPassword || !userFullName) {
       setUserError(t.validation.required);
-      return;
-    }
-    const emailOk = /\S+@\S+\.\S+/.test(userEmail);
-    if (!emailOk) {
-      setUserError(t.validation.invalidEmail);
       return;
     }
     if (userPassword.length < 6) {
@@ -74,7 +69,7 @@ const Settings = () => {
     setUserSubmitting(true);
     try {
       await addUser({
-        email: userEmail,
+        username: userUsername,
         password: userPassword,
         full_name: userFullName,
         role: userRole,
@@ -134,7 +129,7 @@ const Settings = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>{t.settings.fullName}</TableHead>
-                    <TableHead>{t.settings.email}</TableHead>
+                    <TableHead>{t.settings.username}</TableHead>
                     <TableHead>{t.settings.role}</TableHead>
                     <TableHead></TableHead>
                   </TableRow>
@@ -142,28 +137,37 @@ const Settings = () => {
                 <TableBody>
                   {users.map((profile) => (
                     <TableRow key={profile.id}>
-                      <TableCell>{profile.full_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{profile.email}</TableCell>
                       <TableCell>
-                        <Select
-                          value={profile.role}
-                          onValueChange={(value) => {
-                            updateUserRole(profile.id, value as UserRole).catch(() => {
-                              setUserError(t.validation.userRoleFailed);
-                            });
-                          }}
-                        >
-                          <SelectTrigger className="w-[180px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="ADMIN">{t.roles.ADMIN}</SelectItem>
-                            <SelectItem value="MANAGER">{t.roles.MANAGER}</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <span>{profile.full_name}</span>
+                        {profile.is_owner && (
+                          <span className="ml-2 text-xs text-muted-foreground font-medium border border-border rounded px-1.5 py-0.5">{t.settings.mainAdmin}</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{profile.username}</TableCell>
+                      <TableCell>
+                        {profile.is_owner ? (
+                          <span className="text-sm font-medium">{t.roles[profile.role]}</span>
+                        ) : (
+                          <Select
+                            value={profile.role}
+                            onValueChange={(value) => {
+                              updateUserRole(profile.id, value as UserRole).catch(() => {
+                                setUserError(t.validation.userRoleFailed);
+                              });
+                            }}
+                          >
+                            <SelectTrigger className="w-[180px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ADMIN">{t.roles.ADMIN}</SelectItem>
+                              <SelectItem value="MANAGER">{t.roles.MANAGER}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
                       </TableCell>
                       <TableCell>
-                        {profile.id !== currentUser?.id && (
+                        {!profile.is_owner && profile.id !== currentUser?.id && (
                           <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteUserId(profile.id)} aria-label={t.common.delete}>
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -255,8 +259,8 @@ const Settings = () => {
               <Input value={userFullName} onChange={(e) => setUserFullName(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label>{t.settings.email}</Label>
-              <Input type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} />
+              <Label>{t.settings.username}</Label>
+              <Input type="text" value={userUsername} onChange={(e) => setUserUsername(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>{t.settings.password}</Label>
