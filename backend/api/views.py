@@ -3,6 +3,7 @@ import bcrypt
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import IntegrityError
 from django.db.models import Sum, Q
 from rest_framework.views import APIView
@@ -11,7 +12,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod
+from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod, Transfer
 from .permissions import IsAdmin
 
 
@@ -32,12 +33,13 @@ def get_role(user_id):
 
 
 def set_auth_cookie(response, token):
+    secure = not settings.DEBUG
     response.set_cookie(
         'accessToken',
         token,
         httponly=True,
-        secure=True,
-        samesite='None',
+        secure=secure,
+        samesite='None' if secure else 'Lax',
         max_age=7 * 24 * 3600,
         path='/',
     )
@@ -75,12 +77,12 @@ class LoginView(APIView):
     authentication_classes = []
 
     def post(self, request):
-        email = (request.data.get('email') or '').strip().lower()
+        username = (request.data.get('username') or '').strip()
         password = (request.data.get('password') or '')
-        if not email or not password:
-            return Response({'message': 'Email and password required'}, status=400)
+        if not username or not password:
+            return Response({'message': 'Username and password required'}, status=400)
         try:
-            user = User.objects.get(email__iexact=email)
+            user = User.objects.get(email__iexact=username)
         except User.DoesNotExist:
             return Response({'message': 'Invalid credentials'}, status=401)
 
@@ -98,7 +100,7 @@ class LoginView(APIView):
         data = {
             'user': {
                 'id': user.id,
-                'email': user.email,
+                'username': user.email,
                 'full_name': profile.full_name,
                 'role': role,
                 'hotel_id': profile.hotel_id,
@@ -129,7 +131,7 @@ class MeView(APIView):
         return Response({
             'user': {
                 'id': u.id,
-                'email': u.email,
+                'username': u.email,
                 'full_name': profile.full_name,
                 'role': u.role,  # from JWT
                 'hotel_id': u.hotel_id,
@@ -256,6 +258,23 @@ def parse_date(val):
     return datetime.strptime(str(val), '%Y-%m-%d').replace(tzinfo=timezone.utc)
 
 
+BLOCKING_STATUSES = ['CHECKED_IN', 'BOOKED']
+
+
+def has_room_overlap(hotel_id_val, room_id, check_in, check_out, exclude_id=None):
+    """Return True if any active stay occupies this room during [check_in, check_out)."""
+    qs = Stay.objects.filter(
+        hotel_id=hotel_id_val,
+        room_id=room_id,
+        status__in=BLOCKING_STATUSES,
+        check_in_date__lt=check_out,
+        check_out_date__gt=check_in,
+    )
+    if exclude_id:
+        qs = qs.exclude(id=exclude_id)
+    return qs.exists()
+
+
 class StayListCreateView(APIView):
     def get(self, request):
         stays = Stay.objects.filter(hotel_id=hotel_id(request)).order_by('-created_at')
@@ -263,15 +282,24 @@ class StayListCreateView(APIView):
 
     def post(self, request):
         d = request.data
+        check_in = parse_date(d.get('check_in_date'))
+        check_out = parse_date(d.get('check_out_date'))
+        room_id = d.get('room_id')
+        new_status = d.get('status', 'BOOKED')
+
+        if new_status in BLOCKING_STATUSES and check_in and check_out:
+            if has_room_overlap(hotel_id(request), room_id, check_in, check_out):
+                return Response({'message': 'Room is occupied in the selected dates'}, status=409)
+
         stay = Stay(
             id=str(uuid.uuid4()),
             hotel_id=hotel_id(request),
-            room_id=d.get('room_id'),
+            room_id=room_id,
             guest_name=d.get('guest_name', ''),
             guest_phone=d.get('guest_phone') or None,
-            check_in_date=parse_date(d.get('check_in_date')),
-            check_out_date=parse_date(d.get('check_out_date')),
-            status=d.get('status', 'PENDING'),
+            check_in_date=check_in,
+            check_out_date=check_out,
+            status=new_status,
             price_per_night=Decimal(str(d.get('price_per_night', 0))),
             weekly_discount_amount=Decimal(str(d.get('weekly_discount_amount', 0))),
             manual_adjustment_amount=Decimal(str(d.get('manual_adjustment_amount', 0))),
@@ -306,6 +334,12 @@ class StayDetailView(APIView):
         if 'manual_adjustment_amount' in d: stay.manual_adjustment_amount = Decimal(str(d['manual_adjustment_amount']))
         if 'deposit_expected' in d:         stay.deposit_expected = Decimal(str(d['deposit_expected']))
         if 'comment' in d:        stay.comment = d['comment'] or None
+
+        # Overlap check: only for blocking statuses
+        if stay.status in BLOCKING_STATUSES:
+            if has_room_overlap(hotel_id(request), stay.room_id, stay.check_in_date, stay.check_out_date, exclude_id=pk):
+                return Response({'message': 'Room is occupied in the selected dates'}, status=409)
+
         stay.save()
         return Response(stay_data(stay))
 
@@ -313,6 +347,10 @@ class StayDetailView(APIView):
         stay = self._get(request, pk)
         if not stay:
             return Response({'message': 'Not found'}, status=404)
+        if stay.status == 'CHECKED_IN':
+            return Response({'message': 'Cannot delete an active stay: guest is checked in'}, status=409)
+        if Payment.objects.filter(stay_id=pk).exists():
+            return Response({'message': 'Cannot delete a stay with payments'}, status=409)
         stay.delete()
         return Response(status=204)
 
@@ -387,19 +425,29 @@ class PaymentDetailView(APIView):
 # ─── expenses ─────────────────────────────────────────────────────────────────
 
 def expense_data(e):
+    created_by_name = None
+    if e.created_by_id:
+        try:
+            profile = Profile.objects.get(id=e.created_by_id)
+            created_by_name = profile.full_name
+        except Profile.DoesNotExist:
+            created_by_name = None
     return {
         'id': e.id, 'hotel_id': e.hotel_id,
         'spent_at': fmt_dt(e.spent_at), 'category': e.category,
         'method': e.method, 'custom_method_label': e.custom_method_label,
         'amount': to_float(e.amount), 'comment': e.comment,
         'created_at': fmt_dt(e.created_at),
+        'created_by_name': created_by_name,
     }
 
 
 class ExpenseListCreateView(APIView):
     def get(self, request):
-        expenses = Expense.objects.filter(hotel_id=hotel_id(request)).order_by('-spent_at')
-        return Response([expense_data(e) for e in expenses])
+        qs = Expense.objects.filter(hotel_id=hotel_id(request))
+        if not request.user.is_admin:
+            qs = qs.filter(created_by_id=request.user.id)
+        return Response([expense_data(e) for e in qs.order_by('-spent_at')])
 
     def post(self, request):
         d = request.data
@@ -413,6 +461,7 @@ class ExpenseListCreateView(APIView):
             amount=Decimal(str(d.get('amount', 0))),
             comment=d.get('comment') or None,
             created_at=datetime.now(timezone.utc),
+            created_by_id=request.user.id,
         )
         e.save()
         return Response(expense_data(e), status=201)
@@ -591,14 +640,22 @@ class UserListCreateView(APIView):
 
     def get(self, request):
         profiles = Profile.objects.filter(hotel_id=hotel_id(request))
+        # Owner = the profile with the earliest created_at for this hotel
+        owner_id = None
+        oldest = None
+        for p in profiles:
+            if p.created_at and (oldest is None or p.created_at < oldest):
+                oldest = p.created_at
+                owner_id = p.id
         result = []
         for p in profiles:
             try:
                 user = User.objects.get(id=p.id)
                 role = get_role(p.id)
                 result.append({
-                    'id': p.id, 'email': user.email,
+                    'id': p.id, 'username': user.email,
                     'full_name': p.full_name, 'role': role,
+                    'is_owner': p.id == owner_id,
                 })
             except User.DoesNotExist:
                 pass
@@ -606,29 +663,29 @@ class UserListCreateView(APIView):
 
     def post(self, request):
         d = request.data
-        email = (d.get('email') or '').strip().lower()
+        username = (d.get('username') or '').strip()
         password = d.get('password') or ''
         full_name = d.get('full_name') or ''
         role = d.get('role', 'MANAGER')
 
-        if not email or not password or not full_name:
+        if not username or not password or not full_name:
             return Response({'message': 'All fields required'}, status=400)
         if len(password) < 6:
             return Response({'message': 'Password must be at least 6 characters'}, status=400)
-        if User.objects.filter(email__iexact=email).exists():
-            return Response({'message': 'Email already exists'}, status=409)
+        if User.objects.filter(email__iexact=username).exists():
+            return Response({'message': 'Username already exists'}, status=409)
 
         hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         uid = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
 
-        user = User(id=uid, email=email, password_hash=hashed, created_at=now)
+        user = User(id=uid, email=username, password_hash=hashed, created_at=now)
         user.save()
         profile = Profile(id=uid, full_name=full_name, hotel_id=hotel_id(request), created_at=now)
         profile.save()
         UserRole(id=str(uuid.uuid4()), user_id=uid, role=role).save()
 
-        return Response({'id': uid, 'email': email, 'full_name': full_name, 'role': role}, status=201)
+        return Response({'id': uid, 'username': username, 'full_name': full_name, 'role': role}, status=201)
 
 
 class UserRoleView(APIView):
@@ -639,6 +696,10 @@ class UserRoleView(APIView):
             profile = Profile.objects.get(id=pk, hotel_id=hotel_id(request))
         except Profile.DoesNotExist:
             return Response({'message': 'Not found'}, status=404)
+        # Protect the owner (earliest created profile for this hotel)
+        oldest = Profile.objects.filter(hotel_id=hotel_id(request)).order_by('created_at').first()
+        if oldest and pk == oldest.id:
+            return Response({'message': 'Cannot change the role of the main admin'}, status=403)
         role = request.data.get('role')
         if role not in ('ADMIN', 'MANAGER'):
             return Response({'message': 'Invalid role'}, status=400)
@@ -653,7 +714,7 @@ class UserRoleView(APIView):
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
             return Response({'message': 'User not found'}, status=404)
-        return Response({'id': pk, 'email': user.email, 'full_name': profile.full_name, 'role': role})
+        return Response({'id': pk, 'username': user.email, 'full_name': profile.full_name, 'role': role})
 
 
 class UserDeleteView(APIView):
@@ -678,7 +739,10 @@ class UserDeleteView(APIView):
 # ─── custom payment methods (admin only) ──────────────────────────────────────
 
 class CustomPaymentMethodListCreateView(APIView):
-    permission_classes = [IsAdmin]
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdmin()]
+        return super().get_permissions()
 
     def get(self, request):
         methods = CustomPaymentMethod.objects.filter(hotel_id=hotel_id(request)).order_by('name')
@@ -712,6 +776,82 @@ class CustomPaymentMethodDeleteView(APIView):
         except CustomPaymentMethod.DoesNotExist:
             return Response({'message': 'Not found'}, status=404)
         m.delete()
+        return Response(status=204)
+
+
+# ─── transfers ────────────────────────────────────────────────────────────────
+
+def transfer_data(t):
+    return {
+        'id': t.id, 'hotel_id': t.hotel_id,
+        'transferred_at': fmt_dt(t.transferred_at),
+        'from_method': t.from_method,
+        'to_method': t.to_method,
+        'amount': to_float(t.amount),
+        'comment': t.comment,
+        'created_at': fmt_dt(t.created_at),
+    }
+
+
+class TransferListCreateView(APIView):
+    def get(self, request):
+        transfers = Transfer.objects.filter(hotel_id=hotel_id(request)).order_by('-transferred_at')
+        return Response([transfer_data(t) for t in transfers])
+
+    def post(self, request):
+        d = request.data
+        from_m = (d.get('from_method') or '').strip()
+        to_m = (d.get('to_method') or '').strip()
+        amount = Decimal(str(d.get('amount', 0)))
+        if not from_m or not to_m:
+            return Response({'message': 'from_method and to_method required'}, status=400)
+        if from_m == to_m:
+            return Response({'message': 'Cannot transfer to the same register'}, status=400)
+        if amount <= 0:
+            return Response({'message': 'Amount must be positive'}, status=400)
+        t = Transfer(
+            id=str(uuid.uuid4()),
+            hotel_id=hotel_id(request),
+            transferred_at=parse_date(d.get('transferred_at')),
+            from_method=from_m,
+            to_method=to_m,
+            amount=amount,
+            comment=d.get('comment') or None,
+            created_at=datetime.now(timezone.utc),
+        )
+        t.save()
+        return Response(transfer_data(t), status=201)
+
+
+class TransferDetailView(APIView):
+    def _get(self, request, pk):
+        try:
+            return Transfer.objects.get(id=pk, hotel_id=hotel_id(request))
+        except Transfer.DoesNotExist:
+            return None
+
+    def patch(self, request, pk):
+        t = self._get(request, pk)
+        if not t:
+            return Response({'message': 'Not found'}, status=404)
+        d = request.data
+        if 'transferred_at' in d: t.transferred_at = parse_date(d['transferred_at'])
+        if 'from_method' in d:    t.from_method = d['from_method']
+        if 'to_method' in d:      t.to_method = d['to_method']
+        if 'amount' in d:         t.amount = Decimal(str(d['amount']))
+        if 'comment' in d:        t.comment = d['comment'] or None
+        t.save()
+        return Response(transfer_data(t))
+
+    def delete(self, request, pk):
+        t = self._get(request, pk)
+        if not t:
+            return Response({'message': 'Not found'}, status=404)
+        month = t.transferred_at.strftime('%Y-%m')
+        if MonthClosing.objects.filter(hotel_id=t.hotel_id, month=month).exists():
+            if not request.user.is_admin:
+                return Response({'message': 'Month is closed'}, status=403)
+        t.delete()
         return Response(status=204)
 
 

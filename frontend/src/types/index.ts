@@ -80,6 +80,7 @@ export interface Expense {
   custom_method_label: string | null;
   amount: number;
   comment: string;
+  created_by_name?: string | null;
 }
 
 export interface Profile {
@@ -92,8 +93,19 @@ export interface Profile {
 export interface UserWithRole {
   id: string;
   full_name: string;
-  email: string;
+  username: string;
   role: UserRole;
+  is_owner: boolean;
+}
+
+export interface Transfer {
+  id: string;
+  hotel_id: string;
+  transferred_at: string;
+  from_method: string;
+  to_method: string;
+  amount: number;
+  comment: string | null;
 }
 
 export interface MonthClosing {

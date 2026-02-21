@@ -28,7 +28,7 @@ import { ApiError } from "@/lib/api";
 
 const Expenses = () => {
   const { t, language } = useLanguage();
-  const { expenses, addExpense, updateExpense, removeExpense, hotel, customPaymentMethods, addCustomPaymentMethod } = useData();
+  const { payments, expenses, addExpense, updateExpense, removeExpense, hotel, customPaymentMethods, addCustomPaymentMethod } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -54,6 +54,25 @@ const Expenses = () => {
 
   const getMethodLabel = (expense: Expense) =>
     expense.custom_method_label || expense.method;
+
+  // Balance per cash register = income (payments) − outcome (expenses)
+  const balanceByMethod = useMemo(() => {
+    const income: Record<string, number> = {};
+    const outcome: Record<string, number> = {};
+    for (const p of payments) {
+      const label = p.custom_method_label || p.method;
+      income[label] = (income[label] || 0) + p.amount;
+    }
+    for (const e of expenses) {
+      const label = e.custom_method_label || e.method;
+      outcome[label] = (outcome[label] || 0) + e.amount;
+    }
+    const balance: Record<string, number> = {};
+    for (const m of customPaymentMethods) {
+      balance[m.name] = (income[m.name] || 0) - (outcome[m.name] || 0);
+    }
+    return balance;
+  }, [payments, expenses, customPaymentMethods]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -131,6 +150,17 @@ const Expenses = () => {
     }
     if (expenseLocked && !isAdmin) {
       setFormError(t.validation.closedMonthEdit);
+      return;
+    }
+
+    // Cash flow check: available balance = current balance + (old expense amount if editing)
+    const currentBalance = balanceByMethod[formMethodValue] ?? 0;
+    const oldAmount = editingExpense && getMethodLabel(editingExpense) === formMethodValue
+      ? editingExpense.amount
+      : 0;
+    const availableBalance = currentBalance + oldAmount;
+    if (amount > availableBalance) {
+      setFormError(`Недостаточно средств в кассе «${formMethodValue}». Доступно: ${formatCurrency(availableBalance, locale, t.common.currency)}`);
       return;
     }
 
@@ -230,6 +260,7 @@ const Expenses = () => {
                 <TableHead>{t.expenses.amount}</TableHead>
                 <TableHead>{t.expenses.method}</TableHead>
                 <TableHead>{t.expenses.comment}</TableHead>
+                {isAdmin && <TableHead>Добавил</TableHead>}
                 <TableHead>{t.common.actions}</TableHead>
               </TableRow>
             </TableHeader>
@@ -247,6 +278,11 @@ const Expenses = () => {
                       <Badge variant="outline">{getMethodLabel(expense)}</Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{expense.comment}</TableCell>
+                    {isAdmin && (
+                      <TableCell className="text-muted-foreground text-xs">
+                        {expense.created_by_name || '—'}
+                      </TableCell>
+                    )}
                     <TableCell>
                       <Button variant="ghost" size="icon" onClick={() => openEdit(expense)} disabled={locked && !isAdmin} aria-label={t.common.edit}>
                         <Pencil className="h-4 w-4" />
@@ -297,27 +333,40 @@ const Expenses = () => {
               <div className="space-y-2">
                 <Label>{t.expenses.method}</Label>
                 <div className="flex gap-2">
-                  <Select value={formMethodValue} onValueChange={setFormMethodValue}>
+                  <Select value={formMethodValue} onValueChange={(v) => { setFormMethodValue(v); setFormError(null); }}>
                     <SelectTrigger disabled={expenseLocked && !isAdmin}>
-                      <SelectValue placeholder="Выберите метод" />
+                      <SelectValue placeholder="Выберите кассу" />
                     </SelectTrigger>
                     <SelectContent>
-                      {customPaymentMethods.map((m) => (
-                        <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
-                      ))}
+                      {customPaymentMethods.map((m) => {
+                        const bal = balanceByMethod[m.name] ?? 0;
+                        return (
+                          <SelectItem key={m.id} value={m.name} disabled={bal <= 0}>
+                            <span>{m.name}</span>
+                            <span className={`ml-2 text-xs ${bal > 0 ? 'text-success' : 'text-destructive'}`}>
+                              {formatCurrency(bal, locale, t.common.currency)}
+                            </span>
+                          </SelectItem>
+                        );
+                      })}
                       {customPaymentMethods.length === 0 && (
                         <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                          Нет методов. Добавьте через [+]
+                          Нет касс. Добавьте в Настройках.
                         </div>
                       )}
                     </SelectContent>
                   </Select>
                   {isAdmin && (
-                    <Button type="button" variant="outline" size="icon" title="Добавить метод оплаты" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }}>
+                    <Button type="button" variant="outline" size="icon" title="Добавить кассу" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }}>
                       <Plus className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
+                {formMethodValue && (
+                  <p className={`text-xs ${(balanceByMethod[formMethodValue] ?? 0) > 0 ? 'text-muted-foreground' : 'text-destructive font-medium'}`}>
+                    Баланс кассы: {formatCurrency(balanceByMethod[formMethodValue] ?? 0, locale, t.common.currency)}
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-2">

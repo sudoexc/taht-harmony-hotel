@@ -1,4 +1,4 @@
-import { LayoutDashboard, BedDouble, CalendarDays, CreditCard, Receipt, BarChart3, Settings, Gem } from "lucide-react";
+import { LayoutDashboard, BedDouble, CalendarDays, ArrowLeftRight, BarChart3, Settings, Gem } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
@@ -27,13 +27,12 @@ export function AppSidebar() {
   ];
 
   const financeItems = [
-    { title: t.nav.payments, url: "/payments", icon: CreditCard },
-    { title: t.nav.expenses, url: "/expenses", icon: Receipt },
+    { title: t.nav.finance, url: "/finance", icon: ArrowLeftRight },
     ...(isAdmin ? [{ title: t.nav.reports, url: "/reports", icon: BarChart3 }] : []),
   ];
 
   const systemItems = [
-    { title: t.nav.settings, url: "/settings", icon: Settings },
+    ...(isAdmin ? [{ title: t.nav.settings, url: "/settings", icon: Settings }] : []),
   ];
 
   const NavItem = ({ item }: { item: typeof mainItems[0] }) => (
@@ -72,7 +71,7 @@ export function AppSidebar() {
       <SidebarContent className="px-3 py-4">
         <SidebarGroup className="p-0 mb-1">
           <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-sidebar-foreground/40 px-3 mb-1">
-            Управление
+            {t.nav.management}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
@@ -83,7 +82,7 @@ export function AppSidebar() {
 
         <SidebarGroup className="p-0 mb-1">
           <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-sidebar-foreground/40 px-3 mb-1">
-            Финансы
+            {t.nav.finances}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu className="gap-0.5">
@@ -92,16 +91,18 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup className="p-0">
-          <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-sidebar-foreground/40 px-3 mb-1">
-            Система
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu className="gap-0.5">
-              {systemItems.map((item) => <NavItem key={item.url} item={item} />)}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {systemItems.length > 0 && (
+          <SidebarGroup className="p-0">
+            <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-sidebar-foreground/40 px-3 mb-1">
+              {t.nav.system}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {systemItems.map((item) => <NavItem key={item.url} item={item} />)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="px-5 py-4 border-t border-sidebar-border">

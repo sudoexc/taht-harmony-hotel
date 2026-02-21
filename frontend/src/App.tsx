@@ -12,8 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Index from "./pages/Index";
 import Rooms from "./pages/Rooms";
 import Stays from "./pages/Stays";
-import Payments from "./pages/Payments";
-import Expenses from "./pages/Expenses";
+import Finance from "./pages/Finance";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
@@ -45,8 +44,9 @@ const App = () => (
                     <Route path="/" element={<Index />} />
                     <Route path="/rooms" element={<Rooms />} />
                     <Route path="/stays" element={<Stays />} />
-                    <Route path="/payments" element={<Payments />} />
-                    <Route path="/expenses" element={<Expenses />} />
+                    <Route path="/finance" element={<Finance />} />
+                    <Route path="/payments" element={<Navigate to="/finance" replace />} />
+                    <Route path="/expenses" element={<Navigate to="/finance" replace />} />
                     <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<NotFound />} />
