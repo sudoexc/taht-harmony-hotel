@@ -28,13 +28,13 @@ import { ApiError } from "@/lib/api";
 
 const Payments = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addPayment, updatePayment, removePayment, hotel, customPaymentMethods, addCustomPaymentMethod } = useData();
+  const { rooms, stays, payments, expenses, addPayment, updatePayment, removePayment, hotel, customPaymentMethods, addCustomPaymentMethod } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
 
   const [search, setSearch] = useState("");
-  const [methodFilter, setMethodFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("all");
   const [sortKey, setSortKey] = useState("dateDesc");
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -60,11 +60,34 @@ const Payments = () => {
     return { roomNumber: room?.number || "?", guestName: stay?.guest_name || "?" };
   }, [rooms, stays]);
 
+  // Balance per method = income (payments) − outcome (expenses)
+  const balanceByMethod = useMemo(() => {
+    const income: Record<string, number> = {};
+    const outcome: Record<string, number> = {};
+    for (const p of payments) {
+      const label = getMethodLabel(p);
+      income[label] = (income[label] || 0) + p.amount;
+    }
+    for (const e of expenses) {
+      const label = e.custom_method_label || e.method;
+      outcome[label] = (outcome[label] || 0) + e.amount;
+    }
+    const balance: Record<string, number> = {};
+    const allKeys = new Set([...Object.keys(income), ...Object.keys(outcome)]);
+    let allBalance = 0;
+    for (const k of allKeys) {
+      balance[k] = (income[k] || 0) - (outcome[k] || 0);
+      allBalance += balance[k];
+    }
+    balance['__all__'] = allBalance;
+    return balance;
+  }, [payments, expenses]);
+
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return payments
       .filter((payment) => {
-        if (methodFilter !== "all" && getMethodLabel(payment) !== methodFilter) return false;
+        if (activeTab !== "all" && getMethodLabel(payment) !== activeTab) return false;
         if (!query) return true;
         const info = getInfo(payment.stay_id);
         return (
@@ -82,14 +105,14 @@ const Payments = () => {
           default: return b.paid_at.localeCompare(a.paid_at);
         }
       });
-  }, [payments, methodFilter, search, sortKey, getInfo]);
+  }, [payments, activeTab, search, sortKey, getInfo]);
 
   const openAdd = () => {
     setActionError(null);
     setEditingPayment(null);
     setFormStayId(stays[0]?.id || "");
     setFormDate(getTodayInTimeZone(hotel.timezone));
-    setFormMethodValue(customPaymentMethods[0]?.name || "");
+    setFormMethodValue(activeTab !== "all" ? activeTab : (customPaymentMethods[0]?.name || ""));
     setFormAmount("");
     setFormComment("");
     setFormError(null);
@@ -188,20 +211,51 @@ const Payments = () => {
         <Button onClick={openAdd}><Plus className="mr-1 h-4 w-4" />{t.payments.addPayment}</Button>
       </div>
 
+      {/* Cash register tabs */}
+      <div className="flex flex-wrap gap-2">
+        {/* "All" tab */}
+        {(() => {
+          const bal = balanceByMethod['__all__'] || 0;
+          const isActive = activeTab === "all";
+          return (
+            <button
+              onClick={() => setActiveTab("all")}
+              className={`flex flex-col items-start px-4 py-2 rounded-lg border text-sm transition-colors ${
+                isActive ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-accent"
+              }`}
+            >
+              <span className="font-medium">{t.common.all}</span>
+              <span className={`text-xs ${isActive ? "text-primary-foreground/80" : bal >= 0 ? "text-success" : "text-destructive"}`}>
+                {formatCurrency(bal, locale, t.common.currency)}
+              </span>
+            </button>
+          );
+        })()}
+        {customPaymentMethods.map((m) => {
+          const bal = balanceByMethod[m.name] ?? 0;
+          const isActive = activeTab === m.name;
+          return (
+            <button
+              key={m.id}
+              onClick={() => setActiveTab(m.name)}
+              className={`flex flex-col items-start px-4 py-2 rounded-lg border text-sm transition-colors ${
+                isActive ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-accent"
+              }`}
+            >
+              <span className="font-medium">{m.name}</span>
+              <span className={`text-xs ${isActive ? "text-primary-foreground/80" : bal >= 0 ? "text-success" : "text-destructive"}`}>
+                {formatCurrency(bal, locale, t.common.currency)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap gap-3">
         <div className="relative max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder={t.common.search} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
-        <Select value={methodFilter} onValueChange={setMethodFilter}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t.common.all}</SelectItem>
-            {customPaymentMethods.map((m) => (
-              <SelectItem key={m.id} value={m.name}>{m.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select value={sortKey} onValueChange={setSortKey}>
           <SelectTrigger className="w-[200px]"><SelectValue placeholder={t.common.sort} /></SelectTrigger>
           <SelectContent>
@@ -296,7 +350,7 @@ const Payments = () => {
                 <div className="flex gap-2">
                   <Select value={formMethodValue} onValueChange={setFormMethodValue}>
                     <SelectTrigger disabled={paymentLocked && !isAdmin}>
-                      <SelectValue placeholder="Выберите метод" />
+                      <SelectValue placeholder="Выберите кассу" />
                     </SelectTrigger>
                     <SelectContent>
                       {customPaymentMethods.map((m) => (
@@ -304,13 +358,13 @@ const Payments = () => {
                       ))}
                       {customPaymentMethods.length === 0 && (
                         <div className="px-2 py-3 text-xs text-muted-foreground text-center">
-                          Нет методов. Добавьте через [+]
+                          Нет касс. Добавьте в Настройках.
                         </div>
                       )}
                     </SelectContent>
                   </Select>
                   {isAdmin && (
-                    <Button type="button" variant="outline" size="icon" title="Добавить метод оплаты" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }}>
+                    <Button type="button" variant="outline" size="icon" title="Добавить кассу" onClick={() => { setNewMethodName(""); setAddMethodError(null); setAddMethodOpen(true); }}>
                       <Plus className="h-4 w-4" />
                     </Button>
                   )}
@@ -342,7 +396,7 @@ const Payments = () => {
       <Dialog open={addMethodOpen} onOpenChange={setAddMethodOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Новый метод оплаты</DialogTitle>
+            <DialogTitle>Новая касса</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <Input

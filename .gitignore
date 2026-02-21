@@ -1,5 +1,35 @@
+# Dependencies
 frontend/node_modules
-frontend/dist
 backend/node_modules
-backend/dist
-*.env
+
+# Build output
+frontend/dist
+frontend/.vite
+
+# Python
+venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+*.egg-info/
+backend/staticfiles/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Misc
+backend/seed_data.py

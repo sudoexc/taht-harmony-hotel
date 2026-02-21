@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { Gem, Mail, Lock, AlertCircle } from "lucide-react";
+import { Gem, User, Lock, AlertCircle } from "lucide-react";
 
 const Login = () => {
   const { t } = useLanguage();
   const { user, signIn, loading } = useAuth();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -24,7 +24,7 @@ const Login = () => {
     event.preventDefault();
     setError(null);
     setSubmitting(true);
-    const result = await signIn(email, password);
+    const result = await signIn(username, password);
     if (result.error) {
       setError(t.auth.invalid);
     }
@@ -63,16 +63,16 @@ const Login = () => {
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
                 <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                  {t.auth.email}
+                  {t.auth.username}
                 </Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
                   <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     required
-                    placeholder="admin@hotel.com"
+                    placeholder={t.auth.username}
                     className="pl-9 h-11 bg-muted/40 border-border/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary"
                   />
                 </div>
@@ -89,7 +89,7 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    placeholder="••••••••"
+                    placeholder={t.auth.password}
                     className="pl-9 h-11 bg-muted/40 border-border/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary"
                   />
                 </div>
