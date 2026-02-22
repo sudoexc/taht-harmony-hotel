@@ -153,3 +153,12 @@ class Transfer(models.Model):
     class Meta:
         managed = False
         db_table = '"Transfer"'
+
+
+class HotelSettings(models.Model):
+    """Настройки отеля: хранит telegram_group_id для уведомлений."""
+    hotel_id = models.CharField(max_length=36, unique=True)
+    telegram_group_id = models.CharField(max_length=50, blank=True, default='')
+
+    class Meta:
+        db_table = 'api_hotel_settings'

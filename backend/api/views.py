@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod, Transfer
+from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod, Transfer, HotelSettings
 from .permissions import IsAdmin
 
 
@@ -166,6 +166,25 @@ class HotelMeView(APIView):
             'id': h.id, 'name': h.name,
             'timezone': h.timezone, 'created_at': fmt_dt(h.created_at),
         })
+
+
+class HotelSettingsView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _get_or_create(self, request):
+        hs, _ = HotelSettings.objects.get_or_create(hotel_id=hotel_id(request))
+        return hs
+
+    def get(self, request):
+        hs = self._get_or_create(request)
+        return Response({'telegram_group_id': hs.telegram_group_id})
+
+    def patch(self, request):
+        hs = self._get_or_create(request)
+        if 'telegram_group_id' in request.data:
+            hs.telegram_group_id = request.data['telegram_group_id'] or ''
+            hs.save(update_fields=['telegram_group_id'])
+        return Response({'telegram_group_id': hs.telegram_group_id})
 
 
 # ─── rooms ────────────────────────────────────────────────────────────────────

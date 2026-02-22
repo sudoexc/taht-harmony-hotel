@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { apiFetch } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +25,10 @@ const Settings = () => {
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [hotelName, setHotelName] = useState(hotel.name);
   const [hotelTimezone, setHotelTimezone] = useState(hotel.timezone);
+  const [telegramGroupId, setTelegramGroupId] = useState("");
+  const [tgSaving, setTgSaving] = useState(false);
+  const [tgError, setTgError] = useState<string | null>(null);
+  const [tgSaved, setTgSaved] = useState(false);
   const [userDialogOpen, setUserDialogOpen] = useState(false);
   const [userUsername, setUserUsername] = useState("");
   const [userPassword, setUserPassword] = useState("");
@@ -36,6 +41,32 @@ const Settings = () => {
     setHotelName(hotel.name);
     setHotelTimezone(hotel.timezone);
   }, [hotel.name, hotel.timezone]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    apiFetch<{ telegram_group_id: string }>('/hotel-settings')
+      .then((res) => setTelegramGroupId(res.telegram_group_id ?? ""))
+      .catch(() => {});
+  }, [isAdmin]);
+
+  const handleSaveTelegram = async () => {
+    setTgSaving(true);
+    setTgError(null);
+    setTgSaved(false);
+    try {
+      const res = await apiFetch<{ telegram_group_id: string }>('/hotel-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ telegram_group_id: telegramGroupId.trim() }),
+      });
+      setTelegramGroupId(res.telegram_group_id ?? "");
+      setTgSaved(true);
+      setTimeout(() => setTgSaved(false), 3000);
+    } catch {
+      setTgError("Не удалось сохранить");
+    } finally {
+      setTgSaving(false);
+    }
+  };
 
   const resetUserForm = () => {
     setUserUsername("");
@@ -214,6 +245,35 @@ const Settings = () => {
             {customPaymentMethods.length === 0 && (
               <p className="text-sm text-muted-foreground">Нет кастомных методов. Добавьте выше.</p>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {isAdmin && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle>Telegram-уведомления</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>ID группы / канала</Label>
+              <p className="text-xs text-muted-foreground">
+                Добавьте бота в группу, назначьте его администратором, затем вставьте ID чата (например: <code>-1001234567890</code>).
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="-100xxxxxxxxxx"
+                  value={telegramGroupId}
+                  onChange={(e) => { setTelegramGroupId(e.target.value); setTgError(null); setTgSaved(false); }}
+                  className="max-w-xs font-mono"
+                />
+                <Button size="sm" onClick={handleSaveTelegram} disabled={tgSaving}>
+                  {tgSaving ? "Сохранение..." : "Сохранить"}
+                </Button>
+              </div>
+              {tgError && <p className="text-sm text-destructive">{tgError}</p>}
+              {tgSaved && <p className="text-sm text-green-600">Сохранено</p>}
+            </div>
           </CardContent>
         </Card>
       )}

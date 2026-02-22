@@ -13,7 +13,7 @@ INSTALLED_APPS = [
     'django.contrib.auth',
     'rest_framework',
     'corsheaders',
-    'api',
+    'api.apps.ApiConfig',
 ]
 
 MIDDLEWARE = [
@@ -69,5 +69,6 @@ TIME_ZONE = 'UTC'
 
 MIGRATION_MODULES = {
     'contenttypes': 'django.contrib.contenttypes.migrations',
-    'api': None,  # Django won't look for migrations in api app
 }
+
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')

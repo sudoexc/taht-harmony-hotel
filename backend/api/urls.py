@@ -7,6 +7,7 @@ urlpatterns = [
     path('auth/logout',                         views.LogoutView.as_view()),
     path('auth/me',                             views.MeView.as_view()),
     path('hotels/me',                           views.HotelMeView.as_view()),
+    path('hotel-settings',                      views.HotelSettingsView.as_view()),
     path('rooms',                               views.RoomListCreateView.as_view()),
     path('rooms/<str:pk>',                      views.RoomDetailView.as_view()),
     path('stays',                               views.StayListCreateView.as_view()),
