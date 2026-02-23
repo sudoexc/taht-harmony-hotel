@@ -350,7 +350,7 @@ class StayDetailView(APIView):
         if 'status' in d:
             stay.status = d['status']
             # При чекауте дата выезда сдвигается на сегодня, если она в будущем
-            if d['status'] == 'CHECKED_OUT' and 'check_out_date' not in d:
+            if d['status'] == 'CHECKED_OUT':
                 now = datetime.now(timezone.utc)
                 if stay.check_out_date and stay.check_out_date > now:
                     stay.check_out_date = now
