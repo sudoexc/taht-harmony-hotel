@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Search, Pencil, Eye, LogIn, LogOut, Trash2, List, LayoutGrid } from "lucide-react";
+import { Plus, Search, Pencil, Eye, LogIn, LogOut, Trash2, List, LayoutGrid, Undo2 } from "lucide-react";
 import { formatCurrency, formatDate, getNights, getStayTotal, getTodayInTimeZone, shiftDateStr } from "@/lib/format";
 import { Stay, StayStatus } from "@/types";
 import { ApiError } from "@/lib/api";
@@ -28,7 +28,7 @@ const stayStatusColors: Record<string, string> = {
 
 const Stays = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, addStay, updateStay, removeStay, addPayment, hotel, customPaymentMethods } = useData();
+  const { rooms, stays, payments, expenses, transfers, addStay, updateStay, removeStay, addPayment, hotel, customPaymentMethods } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked, isStayLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -63,6 +63,13 @@ const Stays = () => {
   const [quickPaymentDate, setQuickPaymentDate] = useState("");
   const [quickPaymentComment, setQuickPaymentComment] = useState("");
   const [quickPaymentError, setQuickPaymentError] = useState<string | null>(null);
+
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundMethod, setRefundMethod] = useState("");
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundDate, setRefundDate] = useState("");
+  const [refundComment, setRefundComment] = useState("");
+  const [refundError, setRefundError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteStayId, setDeleteStayId] = useState<string | null>(null);
 
@@ -70,6 +77,19 @@ const Stays = () => {
     (stayId: string) => payments.filter((p) => p.stay_id === stayId).reduce((s, p) => s + p.amount, 0),
     [payments],
   );
+
+  // Balance per cash register (for refund form)
+  const balanceByMethod = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const m of customPaymentMethods) result[m.name] = 0;
+    for (const p of payments) { const l = p.custom_method_label || p.method; result[l] = (result[l] || 0) + p.amount; }
+    for (const e of expenses) { const l = e.custom_method_label || e.method; result[l] = (result[l] || 0) - e.amount; }
+    for (const tr of transfers) {
+      result[tr.from_method] = (result[tr.from_method] || 0) - tr.amount;
+      result[tr.to_method] = (result[tr.to_method] || 0) + tr.amount;
+    }
+    return result;
+  }, [payments, expenses, transfers, customPaymentMethods]);
 
   const getRoomNumber = useCallback(
     (roomId: string) => rooms.find((r) => r.id === roomId)?.number || "?",
@@ -301,6 +321,59 @@ const Stays = () => {
     setQuickPaymentError(null);
   };
 
+  const handleRefund = async () => {
+    if (!detailsStay) return;
+    const amount = Number(refundAmount);
+    const paid = getStayPaid(detailsStay.id);
+
+    if (paid <= 0) {
+      setRefundError("Нет оплаченных средств для возврата");
+      return;
+    }
+    if (!amount || amount <= 0) {
+      setRefundError(t.validation.amountPositive);
+      return;
+    }
+    if (amount > paid) {
+      setRefundError(`Нельзя вернуть больше оплаченного (${paid.toLocaleString()})`);
+      return;
+    }
+    if (!refundDate) {
+      setRefundError(t.validation.required);
+      return;
+    }
+    if (isDateLocked(refundDate)) {
+      setRefundError(t.validation.closedMonthEdit);
+      return;
+    }
+
+    const methodBalance =
+      payments.filter(p => (p.custom_method_label || p.method) === refundMethod).reduce((s, p) => s + p.amount, 0)
+      - expenses.filter(e => (e.custom_method_label || e.method) === refundMethod).reduce((s, e) => s + e.amount, 0)
+      + transfers.filter(tr => tr.to_method === refundMethod).reduce((s, tr) => s + tr.amount, 0)
+      - transfers.filter(tr => tr.from_method === refundMethod).reduce((s, tr) => s + tr.amount, 0);
+    if (methodBalance < amount) {
+      setRefundError(`Недостаточно средств в кассе «${refundMethod}» (доступно: ${methodBalance.toLocaleString()})`);
+      return;
+    }
+
+    await addPayment({
+      id: `refund-${Date.now()}`,
+      hotel_id: hotelId,
+      stay_id: detailsStay.id,
+      paid_at: new Date(`${refundDate}T12:00:00Z`).toISOString(),
+      method: 'OTHER',
+      custom_method_label: refundMethod,
+      amount: -amount,
+      comment: refundComment || 'Возврат средств',
+    });
+
+    setRefundAmount("");
+    setRefundComment("");
+    setRefundError(null);
+    setRefundOpen(false);
+  };
+
   const handleStatusChange = async (stay: Stay, nextStatus: StayStatus) => {
     setActionError(null);
     if (isStayLocked(stay) && !isAdmin) {
@@ -472,8 +545,8 @@ const Stays = () => {
                         <TableCell>{stayNights}</TableCell>
                         <TableCell>{formatCurrency(totalAmount, locale, t.common.currency)}</TableCell>
                         <TableCell>{formatCurrency(paid, locale, t.common.currency)}</TableCell>
-                        <TableCell className={due > 0 ? 'text-destructive font-medium' : 'text-success font-medium'}>
-                          {formatCurrency(due, locale, t.common.currency)}
+                        <TableCell className={due > 0 ? 'text-destructive font-medium' : due < 0 ? 'text-info font-medium' : 'text-success font-medium'}>
+                          {due < 0 ? `↑ ${formatCurrency(-due, locale, t.common.currency)}` : formatCurrency(due, locale, t.common.currency)}
                         </TableCell>
                         <TableCell>
                           <Badge className={stayStatusColors[stay.status]}>
@@ -699,8 +772,20 @@ const Stays = () => {
                   <p className="text-sm font-medium">{formatCurrency(getStayPaid(detailsStay.id), locale, t.common.currency)}</p>
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">{t.stays.due}</p>
-                  <p className="text-sm font-medium">{formatCurrency(getStayTotal(detailsStay) - getStayPaid(detailsStay.id), locale, t.common.currency)}</p>
+                  {(() => {
+                    const due = getStayTotal(detailsStay) - getStayPaid(detailsStay.id);
+                    return due < 0 ? (
+                      <>
+                        <p className="text-xs text-muted-foreground">Переплата</p>
+                        <p className="text-sm font-medium text-info">{formatCurrency(-due, locale, t.common.currency)}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs text-muted-foreground">{t.stays.due}</p>
+                        <p className="text-sm font-medium">{formatCurrency(due, locale, t.common.currency)}</p>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -720,9 +805,12 @@ const Stays = () => {
                     </TableHeader>
                     <TableBody>
                       {detailsPayments.map((payment) => (
-                        <TableRow key={payment.id}>
+                        <TableRow key={payment.id} className={payment.amount < 0 ? "text-destructive" : ""}>
                           <TableCell>{formatDate(payment.paid_at, locale)}</TableCell>
-                          <TableCell>{formatCurrency(payment.amount, locale, t.common.currency)}</TableCell>
+                          <TableCell className="font-medium">
+                            {payment.amount < 0 && <span className="text-xs mr-1 opacity-70">↩ возврат</span>}
+                            {formatCurrency(payment.amount, locale, t.common.currency)}
+                          </TableCell>
                           <TableCell>{t.paymentMethod[payment.method]}</TableCell>
                           <TableCell className="text-muted-foreground">{payment.comment}</TableCell>
                         </TableRow>
@@ -793,7 +881,89 @@ const Stays = () => {
                 {quickPaymentError && (
                   <div className="text-sm text-destructive">{quickPaymentError}</div>
                 )}
-                <Button size="sm" onClick={handleQuickPayment}>{t.payments.addPayment}</Button>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={handleQuickPayment}>{t.payments.addPayment}</Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                    onClick={() => {
+                      setRefundOpen((v) => !v);
+                      setRefundDate(detailsStay?.check_out_date || "");
+                      // Default to the register that received the most payments for this stay
+                      const stayPositivePayments = payments.filter(p => p.stay_id === detailsStay?.id && p.amount > 0);
+                      const methodTotals: Record<string, number> = {};
+                      for (const p of stayPositivePayments) {
+                        const m = p.custom_method_label || p.method;
+                        methodTotals[m] = (methodTotals[m] || 0) + p.amount;
+                      }
+                      const dominantMethod = Object.entries(methodTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || customPaymentMethods[0]?.name || "";
+                      setRefundMethod(dominantMethod);
+                      setRefundAmount("");
+                      setRefundComment("");
+                      setRefundError(null);
+                    }}
+                  >
+                    <Undo2 className="h-3.5 w-3.5 mr-1" />
+                    Возврат
+                  </Button>
+                </div>
+
+                {refundOpen && detailsStay && (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-3">
+                    <p className="text-xs font-semibold text-destructive">Возврат средств</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Дата</Label>
+                        <Input type="date" value={refundDate} onChange={(e) => setRefundDate(e.target.value)} />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Касса</Label>
+                        <Select value={refundMethod} onValueChange={(v) => { setRefundMethod(v); setRefundError(null); }}>
+                          <SelectTrigger><SelectValue placeholder="Касса" /></SelectTrigger>
+                          <SelectContent>
+                            {customPaymentMethods.map((m) => {
+                              const bal = balanceByMethod[m.name] ?? 0;
+                              return (
+                                <SelectItem key={m.id} value={m.name} disabled={bal <= 0}>
+                                  {m.name}
+                                  <span className={`ml-2 text-xs ${bal > 0 ? "text-success" : "text-destructive"}`}>
+                                    {bal.toLocaleString()}
+                                  </span>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                        {refundMethod && (
+                          <p className={`text-xs ${(balanceByMethod[refundMethod] ?? 0) > 0 ? "text-muted-foreground" : "text-destructive font-medium"}`}>
+                            Остаток: {(balanceByMethod[refundMethod] ?? 0).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">
+                          Сумма (оплачено: {getStayPaid(detailsStay.id).toLocaleString()})
+                        </Label>
+                        <Input
+                          type="number"
+                          placeholder="0"
+                          value={refundAmount}
+                          onChange={(e) => setRefundAmount(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Комментарий</Label>
+                        <Input value={refundComment} onChange={(e) => setRefundComment(e.target.value)} placeholder="Причина возврата" />
+                      </div>
+                    </div>
+                    {refundError && <p className="text-sm text-destructive">{refundError}</p>}
+                    <Button size="sm" variant="destructive" onClick={handleRefund}>
+                      <Undo2 className="h-3.5 w-3.5 mr-1" />
+                      Подтвердить возврат
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           )}

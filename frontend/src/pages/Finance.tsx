@@ -218,7 +218,10 @@ const Finance = () => {
   const totals = useMemo(() => {
     let inc = 0, out = 0;
     for (const row of filtered) {
-      if (row.type === "payment") inc += row.amount;
+      if (row.type === "payment") {
+        if (row.amount >= 0) inc += row.amount;
+        else out += Math.abs(row.amount);
+      }
       else if (row.type === "expense") out += row.amount;
       // transfers: if a specific register tab is active, count direction
       else if (row.type === "transfer" && activeTab !== "all") {
@@ -503,6 +506,7 @@ const Finance = () => {
             <TableBody>
               {pagedRows.map(row => {
                 const isPayment  = row.type === "payment";
+                const isRefund  = isPayment && row.amount < 0;
                 const isTransfer = row.type === "transfer";
                 const locked = isDateLocked(row.date);
                 const createdByName = row.type === "expense" ? (row.raw as Expense).created_by_name : undefined;
@@ -513,17 +517,19 @@ const Finance = () => {
                   <TableRow key={`${row.type}-${row.id}`}>
                     <TableCell className="text-muted-foreground text-sm">{formatDate(row.date, locale)}</TableCell>
                     <TableCell>
-                      {isPayment
-                        ? <Badge className="bg-success/15 text-success border-success/30 border">↑ {t.finance.income}</Badge>
-                        : isTransfer
-                          ? <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 border">⇄ {t.finance.transfer}</Badge>
-                          : <Badge className="bg-destructive/15 text-destructive border-destructive/30 border">↓ {t.finance.expense}</Badge>
+                      {isRefund
+                        ? <Badge className="bg-destructive/15 text-destructive border-destructive/30 border">↩ Возврат</Badge>
+                        : isPayment
+                          ? <Badge className="bg-success/15 text-success border-success/30 border">↑ {t.finance.income}</Badge>
+                          : isTransfer
+                            ? <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 border">⇄ {t.finance.transfer}</Badge>
+                            : <Badge className="bg-destructive/15 text-destructive border-destructive/30 border">↓ {t.finance.expense}</Badge>
                       }
                     </TableCell>
                     <TableCell className="font-medium">{row.label}</TableCell>
-                    <TableCell className={`font-bold ${isPayment || trIsIn ? "text-success" : isTransfer && !trIsIn && !trIsOut ? "text-muted-foreground" : "text-destructive"}`}>
-                      {isPayment || trIsIn ? "+" : isTransfer && !trIsIn && !trIsOut ? "" : "−"}
-                      {formatCurrency(row.amount, locale, t.common.currency)}
+                    <TableCell className={`font-bold ${isRefund ? "text-destructive" : isPayment || trIsIn ? "text-success" : isTransfer && !trIsIn && !trIsOut ? "text-muted-foreground" : "text-destructive"}`}>
+                      {isRefund ? "−" : isPayment || trIsIn ? "+" : isTransfer && !trIsIn && !trIsOut ? "" : "−"}
+                      {formatCurrency(Math.abs(row.amount), locale, t.common.currency)}
                     </TableCell>
                     <TableCell>
                       {isTransfer

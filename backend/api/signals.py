@@ -132,11 +132,15 @@ def on_payment_saved(sender, instance, created, **kwargs):
     if not group_id:
         return
 
-    icon = '💰 Новый приход' if created else '✏️ Приход изменён'
+    is_refund = instance.amount < 0
+    if created:
+        icon = '↩️ Возврат средств' if is_refund else '💰 Новый приход'
+    else:
+        icon = '✏️ Возврат изменён' if is_refund else '✏️ Приход изменён'
     lines = [
         icon,
         f'Отель: {instance.hotel.name}',
-        f'Сумма: {instance.amount:,.0f}',
+        f'Сумма: {abs(instance.amount):,.0f}',
         f'Метод: {_fmt_method(instance.method, instance.custom_method_label)}',
     ]
     guest = _guest_name(instance.stay_id)

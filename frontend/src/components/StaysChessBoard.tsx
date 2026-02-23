@@ -148,7 +148,7 @@ export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpen
       </div>
 
       {/* Grid */}
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto" style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 10rem)' }}>
         <table
           style={{
             minWidth: `${80 + COLS * 36}px`,
@@ -165,23 +165,27 @@ export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpen
           </colgroup>
 
           <thead>
-            {/* Month row */}
+            {/* Month row — sticky top:0 inside scroll container */}
             <tr>
-              <th className="sticky left-0 z-20 bg-muted/50 border-b border-r border-border" />
+              <th className="sticky left-0 z-30 border-b border-r border-border bg-card" style={{ top: 0, position: 'sticky' }} />
               {monthSpans.map((ms, i) => (
                 <th
                   key={i}
                   colSpan={ms.count}
-                  className="bg-muted/50 border-b border-r border-border py-1 text-center text-xs font-semibold text-muted-foreground capitalize"
+                  className="z-20 border-b border-r border-border py-1 text-center text-xs font-semibold text-muted-foreground capitalize bg-card"
+                  style={{ top: 0, position: 'sticky' }}
                 >
                   {ms.label}
                 </th>
               ))}
             </tr>
 
-            {/* Day row */}
+            {/* Day row — sticky top:24px (below month row) */}
             <tr>
-              <th className="sticky left-0 z-20 bg-muted/40 border-b border-r border-border px-2 py-1 text-xs font-semibold text-muted-foreground text-left">
+              <th
+                className="sticky left-0 z-30 border-b border-r border-border px-2 py-1 text-xs font-semibold text-muted-foreground text-left bg-card"
+                style={{ top: 24, position: 'sticky' }}
+              >
                 {labels.room}
               </th>
               {dates.map((d) => {
@@ -191,13 +195,14 @@ export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpen
                 return (
                   <th
                     key={d}
-                    className={`border-b border-r border-border/60 py-1 px-0 text-center select-none
+                    className={`z-20 border-b border-r border-border/60 py-1 px-0 text-center select-none
                       ${isToday
                         ? "bg-primary/20 text-primary font-bold"
                         : isWeekend
-                        ? "bg-muted/30 text-muted-foreground/60"
-                        : "bg-muted/10 text-muted-foreground"
+                        ? "bg-muted/60 text-muted-foreground/60"
+                        : "bg-card text-muted-foreground"
                       }`}
+                    style={{ top: 24, position: 'sticky' }}
                   >
                     <div className="text-[11px] leading-none">{date.getDate()}</div>
                     <div className="text-[9px] opacity-60 leading-tight mt-0.5">
