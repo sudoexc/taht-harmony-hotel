@@ -347,7 +347,13 @@ class StayDetailView(APIView):
         if 'guest_phone' in d:    stay.guest_phone = d['guest_phone'] or None
         if 'check_in_date' in d:  stay.check_in_date = parse_date(d['check_in_date'])
         if 'check_out_date' in d: stay.check_out_date = parse_date(d['check_out_date'])
-        if 'status' in d:         stay.status = d['status']
+        if 'status' in d:
+            stay.status = d['status']
+            # При чекауте дата выезда сдвигается на сегодня, если она в будущем
+            if d['status'] == 'CHECKED_OUT' and 'check_out_date' not in d:
+                now = datetime.now(timezone.utc)
+                if stay.check_out_date and stay.check_out_date > now:
+                    stay.check_out_date = now
         if 'price_per_night' in d:          stay.price_per_night = Decimal(str(d['price_per_night']))
         if 'weekly_discount_amount' in d:   stay.weekly_discount_amount = Decimal(str(d['weekly_discount_amount']))
         if 'manual_adjustment_amount' in d: stay.manual_adjustment_amount = Decimal(str(d['manual_adjustment_amount']))
