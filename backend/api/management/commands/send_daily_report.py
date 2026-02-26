@@ -17,7 +17,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
 
-from api.models import Hotel, HotelSettings, Room, Stay, Payment
+from api.models import Hotel, HotelSettings, Room, Stay, Payment, Expense
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +25,15 @@ METHOD_LABELS = {
     'CASH': 'Наличные',
     'CARD': 'Карта',
     'TRANSFER': 'Перевод',
+    'OTHER': 'Прочее',
+}
+
+CATEGORY_LABELS = {
+    'SALARY': 'Зарплата',
+    'INVENTORY': 'Инвентарь',
+    'UTILITIES': 'Коммунальные',
+    'REPAIR': 'Ремонт',
+    'MARKETING': 'Маркетинг',
     'OTHER': 'Прочее',
 }
 
@@ -60,6 +69,7 @@ def build_report(hotel, today_start_utc, today_end_utc, today_label):
         hotel=hotel,
         check_in_date__gte=today_start_utc,
         check_in_date__lt=today_end_utc,
+        status__in=['CHECKED_IN', 'CHECKED_OUT'],
     ).count()
 
     # ── Выезды сегодня ────────────────────────────────────────────────────────
@@ -84,6 +94,20 @@ def build_report(hotel, today_start_utc, today_end_utc, today_label):
         income_by_method[label] = income_by_method.get(label, 0) + float(p.amount)
         income_total += float(p.amount)
 
+    # ── Расходы сегодня по категориям ─────────────────────────────────────────
+    expenses_today = Expense.objects.filter(
+        hotel=hotel,
+        spent_at__gte=today_start_utc,
+        spent_at__lt=today_end_utc,
+    )
+
+    expenses_by_category = {}
+    expenses_total = 0
+    for e in expenses_today:
+        label = CATEGORY_LABELS.get(e.category, e.category)
+        expenses_by_category[label] = expenses_by_category.get(label, 0) + float(e.amount)
+        expenses_total += float(e.amount)
+
     # ── Текущая занятость ─────────────────────────────────────────────────────
     total_rooms = Room.objects.filter(hotel=hotel, active=True).count()
     occupied_rooms = Stay.objects.filter(hotel=hotel, status='CHECKED_IN').count()
@@ -107,6 +131,17 @@ def build_report(hotel, today_start_utc, today_end_utc, today_label):
         lines.append(f'  Итого: {income_total:,.0f}')
     else:
         lines.append('  Платежей не было')
+
+    lines += ['', '💸 Расходы за день:']
+    if expenses_by_category:
+        for label, amount in expenses_by_category.items():
+            lines.append(f'  {label}: {amount:,.0f}')
+        lines.append(f'  Итого: {expenses_total:,.0f}')
+    else:
+        lines.append('  Расходов не было')
+
+    profit = income_total - expenses_total
+    lines += ['', f'📈 Прибыль за день: {profit:,.0f}']
 
     lines += [
         '',
