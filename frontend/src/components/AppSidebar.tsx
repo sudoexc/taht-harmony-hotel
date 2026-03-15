@@ -1,4 +1,4 @@
-import { LayoutDashboard, BedDouble, CalendarDays, ArrowLeftRight, BarChart3, Settings, Gem } from "lucide-react";
+import { LayoutDashboard, BedDouble, CalendarDays, ArrowLeftRight, BarChart3, Settings, Gem, Users, TrendingUp } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
@@ -24,12 +24,17 @@ export function AppSidebar() {
     { title: t.nav.dashboard, url: "/", icon: LayoutDashboard },
     { title: t.nav.rooms, url: "/rooms", icon: BedDouble },
     { title: t.nav.stays, url: "/stays", icon: CalendarDays },
+    { title: t.nav.guests, url: "/guests", icon: Users },
   ];
 
   const financeItems = [
     { title: t.nav.finance, url: "/finance", icon: ArrowLeftRight },
-    ...(isAdmin ? [{ title: t.nav.reports, url: "/reports", icon: BarChart3 }] : []),
   ];
+
+  const analyticsItems = isAdmin ? [
+    { title: t.nav.reports, url: "/reports", icon: BarChart3 },
+    { title: t.nav.guestReports, url: "/guest-reports", icon: TrendingUp },
+  ] : [];
 
   const systemItems = [
     ...(isAdmin ? [{ title: t.nav.settings, url: "/settings", icon: Settings }] : []),
@@ -90,6 +95,19 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {analyticsItems.length > 0 && (
+          <SidebarGroup className="p-0 mb-1">
+            <SidebarGroupLabel className="text-[9px] uppercase tracking-widest text-sidebar-foreground/40 px-3 mb-1">
+              {t.nav.analytics}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {analyticsItems.map((item) => <NavItem key={item.url} item={item} />)}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {systemItems.length > 0 && (
           <SidebarGroup className="p-0">

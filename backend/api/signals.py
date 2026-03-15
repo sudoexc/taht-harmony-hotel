@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 
-from .models import Expense, Payment, Transfer, HotelSettings, Profile, Stay
+from .models import Expense, Payment, Transfer, Withdrawal, HotelSettings, Profile, Stay
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +19,6 @@ CATEGORY_LABELS = {
     'CLEANING': 'Уборка',
     'OTHER': 'Прочее',
 }
-
-METHOD_LABELS = {
-    'CASH': 'Наличные',
-    'CARD': 'Карта',
-    'TRANSFER': 'Перевод',
-    'OTHER': 'Прочее',
-}
-
 
 def _send_telegram(group_id, text):
     token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
@@ -49,12 +41,6 @@ def _get_group_id(hotel_id):
         return hs.telegram_group_id or None
     except HotelSettings.DoesNotExist:
         return None
-
-
-def _fmt_method(method, custom_label=None):
-    if custom_label:
-        return custom_label
-    return METHOD_LABELS.get(method, method)
 
 
 def _fmt_category(category):
@@ -90,7 +76,7 @@ def on_expense_saved(sender, instance, created, **kwargs):
         icon,
         f'Отель: {instance.hotel.name}',
         f'Сумма: {instance.amount:,.0f}',
-        f'Метод: {_fmt_method(instance.method, instance.custom_method_label)}',
+        f'Метод: {instance.method}',
         f'Категория: {_fmt_category(instance.category)}',
     ]
     if instance.comment:
@@ -112,7 +98,7 @@ def on_expense_deleted(sender, instance, **kwargs):
         '🗑 Расход удалён',
         f'Отель: {instance.hotel.name}',
         f'Сумма: {instance.amount:,.0f}',
-        f'Метод: {_fmt_method(instance.method, instance.custom_method_label)}',
+        f'Метод: {instance.method}',
         f'Категория: {_fmt_category(instance.category)}',
     ]
     if instance.comment:
@@ -141,7 +127,7 @@ def on_payment_saved(sender, instance, created, **kwargs):
         icon,
         f'Отель: {instance.hotel.name}',
         f'Сумма: {abs(instance.amount):,.0f}',
-        f'Метод: {_fmt_method(instance.method, instance.custom_method_label)}',
+        f'Метод: {instance.method}',
     ]
     guest = _guest_name(instance.stay_id)
     if guest:
@@ -162,7 +148,7 @@ def on_payment_deleted(sender, instance, **kwargs):
         '🗑 Приход удалён',
         f'Отель: {instance.hotel.name}',
         f'Сумма: {instance.amount:,.0f}',
-        f'Метод: {_fmt_method(instance.method, instance.custom_method_label)}',
+        f'Метод: {instance.method}',
     ]
     guest = _guest_name(instance.stay_id)
     if guest:
@@ -207,6 +193,48 @@ def on_transfer_deleted(sender, instance, **kwargs):
         f'Сумма: {instance.amount:,.0f}',
         f'Откуда: {instance.from_method}',
         f'Куда: {instance.to_method}',
+    ]
+    if instance.comment:
+        lines.append(f'Комментарий: {instance.comment}')
+
+    _send_telegram(group_id, '\n'.join(lines))
+
+
+# ─── Withdrawal ───────────────────────────────────────────────────────────────
+
+@receiver(post_save, sender=Withdrawal)
+def on_withdrawal_saved(sender, instance, created, **kwargs):
+    group_id = _get_group_id(instance.hotel_id)
+    if not group_id:
+        return
+
+    icon = '💵 Снятие прибыли' if created else '✏️ Снятие изменено'
+    lines = [
+        icon,
+        f'Отель: {instance.hotel.name}',
+        f'Сумма: {instance.amount:,.0f}',
+        f'Касса: {instance.method}',
+    ]
+    if instance.comment:
+        lines.append(f'Комментарий: {instance.comment}')
+    name = _employee_name(instance.created_by_id)
+    if name:
+        lines.append(f'Администратор: {name}')
+
+    _send_telegram(group_id, '\n'.join(lines))
+
+
+@receiver(post_delete, sender=Withdrawal)
+def on_withdrawal_deleted(sender, instance, **kwargs):
+    group_id = _get_group_id(instance.hotel_id)
+    if not group_id:
+        return
+
+    lines = [
+        '🗑 Снятие удалено',
+        f'Отель: {instance.hotel.name}',
+        f'Сумма: {instance.amount:,.0f}',
+        f'Касса: {instance.method}',
     ]
     if instance.comment:
         lines.append(f'Комментарий: {instance.comment}')

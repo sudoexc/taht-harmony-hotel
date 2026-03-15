@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useData } from "@/contexts/DataContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -13,15 +13,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserRole } from "@/types";
-import { Trash2, Plus } from "lucide-react";
+import { Trash2, Plus, Pencil } from "lucide-react";
+import { formatCurrency } from "@/lib/format";
 
 const Settings = () => {
   const { t } = useLanguage();
-  const { hotel, setHotel, users, addUser, updateUserRole, removeUser, customPaymentMethods, addCustomPaymentMethod, removeCustomPaymentMethod } = useData();
+  const { hotel, setHotel, users, addUser, updateUser, updateUserRole, removeUser, customPaymentMethods, addCustomPaymentMethod, removeCustomPaymentMethod, payments, expenses, transfers, withdrawals } = useData();
   const { role, isAdmin, user: currentUser } = useAuth();
   const [newMethodName, setNewMethodName] = useState("");
   const [methodError, setMethodError] = useState<string | null>(null);
   const [deleteMethodId, setDeleteMethodId] = useState<string | null>(null);
+  const [methodBalanceError, setMethodBalanceError] = useState<{ name: string; balance: number } | null>(null);
   const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   const [hotelName, setHotelName] = useState(hotel.name);
   const [hotelTimezone, setHotelTimezone] = useState(hotel.timezone);
@@ -36,6 +38,12 @@ const Settings = () => {
   const [userRole, setUserRole] = useState<UserRole>("MANAGER");
   const [userError, setUserError] = useState<string | null>(null);
   const [userSubmitting, setUserSubmitting] = useState(false);
+  const [editUserId, setEditUserId] = useState<string | null>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   useEffect(() => {
     setHotelName(hotel.name);
@@ -88,6 +96,41 @@ const Settings = () => {
     }
   };
 
+  const openEditUser = (profile: { id: string; full_name: string; username: string }) => {
+    setEditUserId(profile.id);
+    setEditFullName(profile.full_name);
+    setEditUsername(profile.username);
+    setEditPassword("");
+    setEditError(null);
+  };
+
+  const handleEditUser = async () => {
+    if (!editUserId) return;
+    if (!editFullName.trim() || !editUsername.trim()) {
+      setEditError(t.validation.required);
+      return;
+    }
+    if (editPassword && editPassword.length < 6) {
+      setEditError(t.validation.passwordMin);
+      return;
+    }
+    setEditSubmitting(true);
+    try {
+      const payload: { full_name: string; username: string; password?: string } = {
+        full_name: editFullName.trim(),
+        username: editUsername.trim(),
+      };
+      if (editPassword) payload.password = editPassword;
+      await updateUser(editUserId, payload);
+      setEditUserId(null);
+    } catch (e: unknown) {
+      const msg = (e as { message?: string })?.message;
+      setEditError(msg === 'Username already exists' ? 'Логин уже занят' : (t.validation.required));
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const handleCreateUser = async () => {
     if (!userUsername || !userPassword || !userFullName) {
       setUserError(t.validation.required);
@@ -111,6 +154,29 @@ const Settings = () => {
       setUserError(t.validation.userCreateFailed);
     } finally {
       setUserSubmitting(false);
+    }
+  };
+
+  const balanceByMethod = useMemo(() => {
+    const bal: Record<string, number> = {};
+    for (const p of payments)   bal[p.method] = (bal[p.method] || 0) + p.amount;
+    for (const e of expenses)   bal[e.method] = (bal[e.method] || 0) - e.amount;
+    for (const w of withdrawals) bal[w.method] = (bal[w.method] || 0) - w.amount;
+    for (const tr of transfers) {
+      bal[tr.from_method] = (bal[tr.from_method] || 0) - tr.amount;
+      bal[tr.to_method]   = (bal[tr.to_method]   || 0) + tr.amount;
+    }
+    return bal;
+  }, [payments, expenses, transfers, withdrawals]);
+
+  const handleDeleteMethodClick = (id: string) => {
+    const method = customPaymentMethods.find(m => m.id === id);
+    if (!method) return;
+    const balance = balanceByMethod[method.name] || 0;
+    if (balance > 0) {
+      setMethodBalanceError({ name: method.name, balance });
+    } else {
+      setDeleteMethodId(id);
     }
   };
 
@@ -198,11 +264,16 @@ const Settings = () => {
                         )}
                       </TableCell>
                       <TableCell>
-                        {!profile.is_owner && profile.id !== currentUser?.id && (
-                          <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteUserId(profile.id)} aria-label={t.common.delete}>
-                            <Trash2 className="h-4 w-4" />
+                        <div className="flex items-center gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEditUser(profile)} aria-label="Редактировать">
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
+                          {!profile.is_owner && profile.id !== currentUser?.id && (
+                            <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteUserId(profile.id)} aria-label={t.common.delete}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -235,7 +306,7 @@ const Settings = () => {
                 {customPaymentMethods.map((m) => (
                   <div key={m.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-muted/40 text-sm">
                     <span className="font-medium">{m.name}</span>
-                    <button onClick={() => setDeleteMethodId(m.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-1">
+                    <button onClick={() => handleDeleteMethodClick(m.id)} className="text-muted-foreground hover:text-destructive transition-colors ml-1">
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
@@ -277,6 +348,23 @@ const Settings = () => {
           </CardContent>
         </Card>
       )}
+
+      <AlertDialog open={!!methodBalanceError} onOpenChange={(open) => { if (!open) setMethodBalanceError(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Невозможно удалить кассу</AlertDialogTitle>
+            <AlertDialogDescription>
+              В кассе <strong>«{methodBalanceError?.name}»</strong> есть средства:{" "}
+              <strong>{formatCurrency(methodBalanceError?.balance ?? 0, "ru-RU", "сум")}</strong>.
+              <br />
+              Сначала выведите все средства или переведите их в другую кассу.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => setMethodBalanceError(null)}>Понятно</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteMethodId} onOpenChange={(open) => { if (!open) setDeleteMethodId(null); }}>
         <AlertDialogContent>
@@ -343,6 +431,32 @@ const Settings = () => {
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setUserDialogOpen(false)}>{t.common.cancel}</Button>
             <Button onClick={handleCreateUser} disabled={userSubmitting}>{t.common.save}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!editUserId} onOpenChange={(open) => { if (!open) setEditUserId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Редактировать пользователя</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label>{t.settings.fullName}</Label>
+              <Input value={editFullName} onChange={(e) => setEditFullName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.settings.username}</Label>
+              <Input value={editUsername} onChange={(e) => setEditUsername(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.settings.password} <span className="text-muted-foreground text-xs">(оставьте пустым — не меняется)</span></Label>
+              <Input type="password" placeholder="Новый пароль (мин. 6 символов)" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
+            </div>
+            {editError && <div className="text-sm text-destructive">{editError}</div>}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setEditUserId(null)}>{t.common.cancel}</Button>
+            <Button onClick={handleEditUser} disabled={editSubmitting}>{t.common.save}</Button>
           </div>
         </DialogContent>
       </Dialog>

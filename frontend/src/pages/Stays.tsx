@@ -28,7 +28,7 @@ const stayStatusColors: Record<string, string> = {
 
 const Stays = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, expenses, transfers, addStay, updateStay, removeStay, addPayment, hotel, customPaymentMethods } = useData();
+  const { rooms, stays, payments, expenses, transfers, addStay, updateStay, removeStay, addPayment, hotel, customPaymentMethods, guests } = useData();
   const { hotelId, isAdmin } = useAuth();
   const { isDateLocked, isStayLocked } = useMonthLock();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
@@ -38,6 +38,8 @@ const Stays = () => {
   const [sortKey, setSortKey] = useState("checkInDesc");
 
   const [viewMode, setViewMode] = useState<"list" | "chess">("list");
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 30;
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingStay, setEditingStay] = useState<Stay | null>(null);
@@ -57,6 +59,7 @@ const Stays = () => {
   const [formDeposit, setFormDeposit] = useState("0");
   const [formComment, setFormComment] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [guestSuggestionsOpen, setGuestSuggestionsOpen] = useState(false);
 
   const [quickPaymentMethod, setQuickPaymentMethod] = useState("");
   const [quickPaymentAmount, setQuickPaymentAmount] = useState("");
@@ -82,8 +85,8 @@ const Stays = () => {
   const balanceByMethod = useMemo(() => {
     const result: Record<string, number> = {};
     for (const m of customPaymentMethods) result[m.name] = 0;
-    for (const p of payments) { const l = p.custom_method_label || p.method; result[l] = (result[l] || 0) + p.amount; }
-    for (const e of expenses) { const l = e.custom_method_label || e.method; result[l] = (result[l] || 0) - e.amount; }
+    for (const p of payments) { result[p.method] = (result[p.method] || 0) + p.amount; }
+    for (const e of expenses) { result[e.method] = (result[e.method] || 0) - e.amount; }
     for (const tr of transfers) {
       result[tr.from_method] = (result[tr.from_method] || 0) - tr.amount;
       result[tr.to_method] = (result[tr.to_method] || 0) + tr.amount;
@@ -146,18 +149,21 @@ const Stays = () => {
     });
   }, [stays, search, statusFilter, sortKey, getRoomNumber, getStayPaid]);
 
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+  const paginated  = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
   const todayStr = getTodayInTimeZone(hotel.timezone);
 
-  const openAdd = () => {
-    const defaultRoom = rooms[0];
+  const openAdd = (roomId?: string, checkIn?: string) => {
+    const room = roomId ? rooms.find(r => r.id === roomId) : rooms[0];
     setEditingStay(null);
     setFormGuestName("");
     setFormGuestPhone("");
-    setFormRoomId(rooms[0]?.id || "");
-    setFormCheckIn(todayStr);
-    setFormCheckOut(shiftDateStr(todayStr, 1));
+    setFormRoomId(room?.id || rooms[0]?.id || "");
+    setFormCheckIn(checkIn || todayStr);
+    setFormCheckOut(shiftDateStr(checkIn || todayStr, 1));
     setFormStatus("BOOKED");
-    setFormPrice(defaultRoom ? String(defaultRoom.base_price) : "0");
+    setFormPrice(room ? String(room.base_price) : "0");
     setFormDiscount("0");
     setFormAdjustment("0");
     setFormDeposit("0");
@@ -237,6 +243,12 @@ const Stays = () => {
     return blocked;
   }, [stays, formCheckIn, formCheckOut, editingStay]);
 
+  const guestSuggestions = useMemo(() => {
+    if (!formGuestName.trim() || formGuestName.trim().length < 2) return [];
+    const q = formGuestName.toLowerCase();
+    return guests.filter((g) => g.name.toLowerCase().includes(q)).slice(0, 6);
+  }, [guests, formGuestName]);
+
   const handleSave = async () => {
     if (!formGuestName || !formRoomId || !formCheckIn || !formCheckOut) {
       setFormError(t.validation.required);
@@ -310,8 +322,7 @@ const Stays = () => {
       hotel_id: hotelId,
       stay_id: detailsStay.id,
       paid_at: new Date(`${quickPaymentDate}T12:00:00Z`).toISOString(),
-      method: 'OTHER',
-      custom_method_label: quickPaymentMethod,
+      method: quickPaymentMethod,
       amount,
       comment: quickPaymentComment,
     });
@@ -348,8 +359,8 @@ const Stays = () => {
     }
 
     const methodBalance =
-      payments.filter(p => (p.custom_method_label || p.method) === refundMethod).reduce((s, p) => s + p.amount, 0)
-      - expenses.filter(e => (e.custom_method_label || e.method) === refundMethod).reduce((s, e) => s + e.amount, 0)
+      payments.filter(p => p.method === refundMethod).reduce((s, p) => s + p.amount, 0)
+      - expenses.filter(e => e.method === refundMethod).reduce((s, e) => s + e.amount, 0)
       + transfers.filter(tr => tr.to_method === refundMethod).reduce((s, tr) => s + tr.amount, 0)
       - transfers.filter(tr => tr.from_method === refundMethod).reduce((s, tr) => s + tr.amount, 0);
     if (methodBalance < amount) {
@@ -362,8 +373,7 @@ const Stays = () => {
       hotel_id: hotelId,
       stay_id: detailsStay.id,
       paid_at: new Date(`${refundDate}T12:00:00Z`).toISOString(),
-      method: 'OTHER',
-      custom_method_label: refundMethod,
+      method: refundMethod,
       amount: -amount,
       comment: refundComment || 'Возврат средств',
     });
@@ -478,15 +488,16 @@ const Stays = () => {
             beds: t.rooms.beds,
           }}
           onOpenDetails={openDetails}
+          onCellClick={(roomId, dateStr) => openAdd(roomId, dateStr)}
         />
       ) : (
         <>
           <div className="flex flex-wrap gap-3">
             <div className="relative max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder={t.common.search} value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+              <Input placeholder={t.common.search} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} className="pl-9" />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
               <SelectTrigger className="w-[180px]"><SelectValue placeholder={t.common.filter} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t.common.all}</SelectItem>
@@ -496,7 +507,7 @@ const Stays = () => {
                 <SelectItem value="CANCELLED">{t.status.CANCELLED}</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={sortKey} onValueChange={setSortKey}>
+            <Select value={sortKey} onValueChange={v => { setSortKey(v); setPage(0); }}>
               <SelectTrigger className="w-[220px]"><SelectValue placeholder={t.common.sort} /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="checkInDesc">{t.sorting.checkInDesc}</SelectItem>
@@ -530,7 +541,7 @@ const Stays = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map(stay => {
+                  {paginated.map(stay => {
                     const stayNights = getNights(stay.check_in_date, stay.check_out_date);
                     const totalAmount = getStayTotal(stay);
                     const paid = getStayPaid(stay.id);
@@ -596,6 +607,26 @@ const Stays = () => {
               </Table>
             </CardContent>
           </Card>
+
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>{filtered.length} записей · стр. {page + 1} из {totalPages}</span>
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setPage(0)} disabled={page === 0}>«</Button>
+                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setPage(p => p - 1)} disabled={page === 0}>‹</Button>
+                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                  const p = totalPages <= 7 ? i : page < 4 ? i : page > totalPages - 5 ? totalPages - 7 + i : page - 3 + i;
+                  return (
+                    <Button key={p} variant={p === page ? "secondary" : "outline"} size="sm" className="h-8 w-8 p-0" onClick={() => setPage(p)}>
+                      {p + 1}
+                    </Button>
+                  );
+                })}
+                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages - 1}>›</Button>
+                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setPage(totalPages - 1)} disabled={page >= totalPages - 1}>»</Button>
+              </div>
+            </div>
+          )}
         </>
       )}
 
@@ -623,7 +654,35 @@ const Stays = () => {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>{t.stays.guestName}</Label>
-                <Input value={formGuestName} onChange={(e) => setFormGuestName(e.target.value)} disabled={stayLocked && !isAdmin} />
+                <div className="relative">
+                  <Input
+                    value={formGuestName}
+                    onChange={(e) => { setFormGuestName(e.target.value); setGuestSuggestionsOpen(true); }}
+                    onFocus={() => setGuestSuggestionsOpen(true)}
+                    onBlur={() => setTimeout(() => setGuestSuggestionsOpen(false), 150)}
+                    disabled={stayLocked && !isAdmin}
+                    autoComplete="off"
+                  />
+                  {guestSuggestionsOpen && guestSuggestions.length > 0 && (
+                    <div className="absolute z-50 top-full left-0 right-0 mt-1 rounded-md border border-border bg-popover shadow-md overflow-hidden">
+                      {guestSuggestions.map((g) => (
+                        <button
+                          key={g.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-accent flex items-center justify-between gap-2"
+                          onMouseDown={() => {
+                            setFormGuestName(g.name);
+                            setFormGuestPhone(g.phone);
+                            setGuestSuggestionsOpen(false);
+                          }}
+                        >
+                          <span className="font-medium">{g.name}</span>
+                          {g.phone && <span className="text-xs text-muted-foreground">{g.phone}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>{t.stays.guestPhone}</Label>
@@ -811,7 +870,7 @@ const Stays = () => {
                             {payment.amount < 0 && <span className="text-xs mr-1 opacity-70">↩ возврат</span>}
                             {formatCurrency(payment.amount, locale, t.common.currency)}
                           </TableCell>
-                          <TableCell>{t.paymentMethod[payment.method]}</TableCell>
+                          <TableCell>{payment.method}</TableCell>
                           <TableCell className="text-muted-foreground">{payment.comment}</TableCell>
                         </TableRow>
                       ))}
@@ -894,8 +953,7 @@ const Stays = () => {
                       const stayPositivePayments = payments.filter(p => p.stay_id === detailsStay?.id && p.amount > 0);
                       const methodTotals: Record<string, number> = {};
                       for (const p of stayPositivePayments) {
-                        const m = p.custom_method_label || p.method;
-                        methodTotals[m] = (methodTotals[m] || 0) + p.amount;
+                        methodTotals[p.method] = (methodTotals[p.method] || 0) + p.amount;
                       }
                       const dominantMethod = Object.entries(methodTotals).sort((a, b) => b[1] - a[1])[0]?.[0] || customPaymentMethods[0]?.name || "";
                       setRefundMethod(dominantMethod);

@@ -16,6 +16,23 @@ export default defineConfig(({ mode }) => {
       hmr: {
         overlay: false,
       },
+      proxy: {
+        '/auth': 'http://localhost:4000',
+        '/hotels': 'http://localhost:4000',
+        '/hotel-settings': 'http://localhost:4000',
+        '/rooms': 'http://localhost:4000',
+        '/stays': 'http://localhost:4000',
+        '/payments': 'http://localhost:4000',
+        '/expenses': 'http://localhost:4000',
+        '/transfers': 'http://localhost:4000',
+        '/reports': 'http://localhost:4000',
+        '/users': 'http://localhost:4000',
+        '/custom-payment-methods': 'http://localhost:4000',
+        '/month-closings': 'http://localhost:4000',
+        '/withdrawals': 'http://localhost:4000',
+        '/guests': 'http://localhost:4000',
+        '/health': 'http://localhost:4000',
+      },
     },
     plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
     resolve: {

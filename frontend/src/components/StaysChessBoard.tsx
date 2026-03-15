@@ -39,9 +39,10 @@ interface Props {
   locale: string;
   labels: Labels;
   onOpenDetails: (stay: Stay) => void;
+  onCellClick?: (roomId: string, dateStr: string) => void;
 }
 
-export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpenDetails }: Props) {
+export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpenDetails, onCellClick }: Props) {
   const [offset, setOffset] = useState(-7); // start 7 days before today
 
   const dates = useMemo(() => {
@@ -232,12 +233,20 @@ export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpen
 
                   {segs.map((seg, idx) => {
                     if (seg.type === "empty") {
-                      const isToday = dates[seg.startIdx] === todayStr;
+                      const dateStr = dates[seg.startIdx];
+                      const isToday = dateStr === todayStr;
                       return (
                         <td
                           key={idx}
-                          className={`border-r border-border/25 h-11 ${isToday ? "bg-primary/5" : ""}`}
-                        />
+                          className={`border-r border-border/25 h-11 group/cell ${isToday ? "bg-primary/5" : ""} ${onCellClick ? "cursor-pointer" : ""}`}
+                          onClick={onCellClick ? () => onCellClick(room.id, dateStr) : undefined}
+                        >
+                          {onCellClick && (
+                            <div className="h-full flex items-center justify-center opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                              <span className="w-5 h-5 rounded-full bg-primary/20 flex items-center justify-center text-primary text-xs leading-none">+</span>
+                            </div>
+                          )}
+                        </td>
                       );
                     }
 

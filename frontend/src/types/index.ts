@@ -1,10 +1,9 @@
-export type RoomType = 'ECONOM' | 'STANDARD';
+export type RoomType = 'ECONOM' | 'STANDARD' | 'SUITE' | 'FAMILY';
 export type StayStatus = 'BOOKED' | 'CHECKED_IN' | 'CHECKED_OUT' | 'CANCELLED';
-export type PaymentMethod = 'CASH' | 'CARD' | 'PAYME' | 'CLICK' | 'OTHER';
 export type ExpenseCategory = 'SALARY' | 'INVENTORY' | 'UTILITIES' | 'REPAIR' | 'MARKETING' | 'OTHER';
 export type UserRole = 'ADMIN' | 'MANAGER';
 
-export type RevenueByMethod = Record<PaymentMethod, number>;
+export type RevenueByMethod = Record<string, number>;
 export type ExpensesByCategory = Record<ExpenseCategory, number>;
 
 export interface TotalsSnapshot {
@@ -42,6 +41,7 @@ export interface Stay {
   id: string;
   hotel_id: string;
   room_id: string;
+  guest_id?: string | null;
   guest_name: string;
   guest_phone: string;
   check_in_date: string;
@@ -65,8 +65,7 @@ export interface Payment {
   hotel_id: string;
   stay_id: string;
   paid_at: string;
-  method: PaymentMethod;
-  custom_method_label: string | null;
+  method: string;
   amount: number;
   comment: string;
 }
@@ -76,8 +75,7 @@ export interface Expense {
   hotel_id: string;
   spent_at: string;
   category: ExpenseCategory;
-  method: PaymentMethod;
-  custom_method_label: string | null;
+  method: string;
   amount: number;
   comment: string;
   created_by_name?: string | null;
@@ -106,6 +104,26 @@ export interface Transfer {
   to_method: string;
   amount: number;
   comment: string | null;
+}
+
+export interface Withdrawal {
+  id: string;
+  hotel_id: string;
+  withdrawn_at: string;
+  method: string;
+  amount: number;
+  comment: string | null;
+  created_at: string;
+  created_by_name?: string | null;
+}
+
+export interface Guest {
+  id: string;
+  hotel_id: string;
+  name: string;
+  phone: string;
+  notes: string;
+  created_at: string;
 }
 
 export interface MonthClosing {

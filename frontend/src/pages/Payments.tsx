@@ -51,8 +51,7 @@ const Payments = () => {
   const [newMethodName, setNewMethodName] = useState("");
   const [addMethodError, setAddMethodError] = useState<string | null>(null);
 
-  const getMethodLabel = (payment: Payment) =>
-    payment.custom_method_label || payment.method;
+  const getMethodLabel = (payment: Payment) => payment.method;
 
   const getInfo = useCallback((stayId: string) => {
     const stay = stays.find((s) => s.id === stayId);
@@ -69,7 +68,7 @@ const Payments = () => {
       income[label] = (income[label] || 0) + p.amount;
     }
     for (const e of expenses) {
-      const label = e.custom_method_label || e.method;
+      const label = e.method;
       outcome[label] = (outcome[label] || 0) + e.amount;
     }
     const balance: Record<string, number> = {};
@@ -171,8 +170,7 @@ const Payments = () => {
       hotel_id: hotelId || "",
       stay_id: formStayId,
       paid_at: new Date(`${formDate}T12:00:00Z`).toISOString(),
-      method: 'OTHER',
-      custom_method_label: formMethodValue,
+      method: formMethodValue,
       amount,
       comment: formComment,
     };

@@ -17,16 +17,9 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db.models import Sum
 
-from api.models import Hotel, HotelSettings, Room, Stay, Payment, Expense
+from api.models import Hotel, HotelSettings, Room, Stay, Payment, Expense, Withdrawal
 
 logger = logging.getLogger(__name__)
-
-METHOD_LABELS = {
-    'CASH': 'Наличные',
-    'CARD': 'Карта',
-    'TRANSFER': 'Перевод',
-    'OTHER': 'Прочее',
-}
 
 CATEGORY_LABELS = {
     'SALARY': 'Зарплата',
@@ -53,12 +46,6 @@ def _send_telegram(group_id, text):
     except Exception as exc:
         logger.warning('Telegram send failed for group %s: %s', group_id, exc)
         return False
-
-
-def _fmt_method(method, custom_label=None):
-    if custom_label:
-        return custom_label
-    return METHOD_LABELS.get(method, method)
 
 
 def build_report(hotel, today_start_utc, today_end_utc, today_label):
@@ -90,8 +77,7 @@ def build_report(hotel, today_start_utc, today_end_utc, today_label):
     income_by_method = {}
     income_total = 0
     for p in payments_today:
-        label = _fmt_method(p.method, p.custom_method_label)
-        income_by_method[label] = income_by_method.get(label, 0) + float(p.amount)
+        income_by_method[p.method] = income_by_method.get(p.method, 0) + float(p.amount)
         income_total += float(p.amount)
 
     # ── Расходы сегодня по категориям ─────────────────────────────────────────
@@ -140,8 +126,27 @@ def build_report(hotel, today_start_utc, today_end_utc, today_label):
     else:
         lines.append('  Расходов не было')
 
+    # ── Снятия за день ────────────────────────────────────────────────────────
+    withdrawals_today = Withdrawal.objects.filter(
+        hotel=hotel,
+        withdrawn_at__gte=today_start_utc,
+        withdrawn_at__lt=today_end_utc,
+    )
+    withdrawals_by_method = {}
+    withdrawals_total = 0
+    for w in withdrawals_today:
+        withdrawals_by_method[w.method] = withdrawals_by_method.get(w.method, 0) + float(w.amount)
+        withdrawals_total += float(w.amount)
+
     profit = income_total - expenses_total
     lines += ['', f'📈 Прибыль за день: {profit:,.0f}']
+
+    if withdrawals_by_method:
+        lines += ['', '💵 Снятия за день:']
+        for label, amount in withdrawals_by_method.items():
+            lines.append(f'  {label}: {amount:,.0f}')
+        lines.append(f'  Итого: {withdrawals_total:,.0f}')
+        lines.append(f'  Остаток: {profit - withdrawals_total:,.0f}')
 
     lines += [
         '',
