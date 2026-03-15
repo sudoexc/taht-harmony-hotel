@@ -52,19 +52,18 @@ const Expenses = () => {
   const [newMethodName, setNewMethodName] = useState("");
   const [addMethodError, setAddMethodError] = useState<string | null>(null);
 
-  const getMethodLabel = (expense: Expense) =>
-    expense.custom_method_label || expense.method;
+  const getMethodLabel = (expense: Expense) => expense.method;
 
   // Balance per cash register = income (payments) − outcome (expenses)
   const balanceByMethod = useMemo(() => {
     const income: Record<string, number> = {};
     const outcome: Record<string, number> = {};
     for (const p of payments) {
-      const label = p.custom_method_label || p.method;
+      const label = p.method;
       income[label] = (income[label] || 0) + p.amount;
     }
     for (const e of expenses) {
-      const label = e.custom_method_label || e.method;
+      const label = e.method;
       outcome[label] = (outcome[label] || 0) + e.amount;
     }
     const balance: Record<string, number> = {};
@@ -169,8 +168,7 @@ const Expenses = () => {
       hotel_id: hotelId || "",
       spent_at: new Date(`${formDate}T12:00:00Z`).toISOString(),
       category: formCategory,
-      method: 'OTHER',
-      custom_method_label: formMethodValue,
+      method: formMethodValue,
       amount,
       comment: formComment,
     };

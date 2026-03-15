@@ -220,6 +220,8 @@ const Rooms = () => {
                   <SelectContent>
                     <SelectItem value="STANDARD">{t.roomType.STANDARD}</SelectItem>
                     <SelectItem value="ECONOM">{t.roomType.ECONOM}</SelectItem>
+                    <SelectItem value="SUITE">{t.roomType.SUITE}</SelectItem>
+                    <SelectItem value="FAMILY">{t.roomType.FAMILY}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

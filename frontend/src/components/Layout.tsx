@@ -24,7 +24,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { user, signOut } = useAuth();
   const locale = language === "uz" ? "uz-UZ" : "ru-RU";
 
-  const { payments, expenses, transfers, customPaymentMethods } = useData();
+  const { payments, expenses, transfers, withdrawals, customPaymentMethods } = useData();
 
   const kassaStats = useMemo(() => {
     const income: Record<string, number> = {};
@@ -37,17 +37,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
 
     for (const p of payments) {
-      const label = p.custom_method_label || p.method;
+      const label = p.method;
       income[label] = (income[label] || 0) + p.amount;
     }
     for (const e of expenses) {
-      const label = e.custom_method_label || e.method;
+      const label = e.method;
       outcome[label] = (outcome[label] || 0) + e.amount;
     }
-    // transfers move money between registers
     for (const tr of transfers) {
       outcome[tr.from_method] = (outcome[tr.from_method] || 0) + tr.amount;
       income[tr.to_method]    = (income[tr.to_method]    || 0) + tr.amount;
+    }
+    for (const w of withdrawals) {
+      outcome[w.method] = (outcome[w.method] || 0) + w.amount;
     }
 
     const allMethods = new Set([...Object.keys(income), ...Object.keys(outcome)]);
@@ -60,7 +62,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
     const totalBalance = Object.values(byMethod).reduce((s, v) => s + v.balance, 0);
     return { totalBalance, byMethod };
-  }, [payments, expenses, transfers, customPaymentMethods]);
+  }, [payments, expenses, transfers, withdrawals, customPaymentMethods]);
 
   return (
     <SidebarProvider>

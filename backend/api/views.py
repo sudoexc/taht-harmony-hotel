@@ -12,7 +12,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod, Transfer
+from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod, Transfer, HotelSettings, Withdrawal, Guest
 from .permissions import IsAdmin
 
 
@@ -168,6 +168,25 @@ class HotelMeView(APIView):
         })
 
 
+class HotelSettingsView(APIView):
+    permission_classes = [IsAdmin]
+
+    def _get_or_create(self, request):
+        hs, _ = HotelSettings.objects.get_or_create(hotel_id=hotel_id(request))
+        return hs
+
+    def get(self, request):
+        hs = self._get_or_create(request)
+        return Response({'telegram_group_id': hs.telegram_group_id})
+
+    def patch(self, request):
+        hs = self._get_or_create(request)
+        if 'telegram_group_id' in request.data:
+            hs.telegram_group_id = request.data['telegram_group_id'] or ''
+            hs.save(update_fields=['telegram_group_id'])
+        return Response({'telegram_group_id': hs.telegram_group_id})
+
+
 # ─── rooms ────────────────────────────────────────────────────────────────────
 
 def room_data(r):
@@ -235,10 +254,14 @@ class RoomDetailView(APIView):
 
 # ─── stays ────────────────────────────────────────────────────────────────────
 
-def stay_data(s):
+def stay_data(s, guest=None):
+    # Use linked guest's current name/phone if available
+    name  = guest.name  if guest else s.guest_name
+    phone = guest.phone if guest else s.guest_phone
     return {
         'id': s.id, 'hotel_id': s.hotel_id, 'room_id': s.room_id,
-        'guest_name': s.guest_name, 'guest_phone': s.guest_phone,
+        'guest_id': s.guest_id,
+        'guest_name': name, 'guest_phone': phone,
         'check_in_date': fmt_date(s.check_in_date),
         'check_out_date': fmt_date(s.check_out_date),
         'status': s.status,
@@ -248,6 +271,22 @@ def stay_data(s):
         'deposit_expected': to_float(s.deposit_expected),
         'comment': s.comment, 'created_at': fmt_dt(s.created_at),
     }
+
+
+def _find_or_create_guest(hotel_id_val, name, phone):
+    """Find existing guest by name+phone or create new one. Returns Guest or None."""
+    name = (name or '').strip()
+    if not name:
+        return None
+    phone = (phone or '').strip()
+    qs = Guest.objects.filter(hotel_id=hotel_id_val, name=name)
+    if phone:
+        qs = qs.filter(phone=phone)
+    guest = qs.first()
+    if not guest:
+        guest = Guest(id=str(uuid.uuid4()), hotel_id=hotel_id_val, name=name, phone=phone, notes='')
+        guest.save()
+    return guest
 
 
 def parse_date(val):
@@ -277,8 +316,10 @@ def has_room_overlap(hotel_id_val, room_id, check_in, check_out, exclude_id=None
 
 class StayListCreateView(APIView):
     def get(self, request):
-        stays = Stay.objects.filter(hotel_id=hotel_id(request)).order_by('-created_at')
-        return Response([stay_data(s) for s in stays])
+        stays = list(Stay.objects.filter(hotel_id=hotel_id(request)).order_by('-created_at'))
+        guest_ids = {s.guest_id for s in stays if s.guest_id}
+        guests_map = {g.id: g for g in Guest.objects.filter(id__in=guest_ids)}
+        return Response([stay_data(s, guests_map.get(s.guest_id)) for s in stays])
 
     def post(self, request):
         d = request.data
@@ -286,17 +327,21 @@ class StayListCreateView(APIView):
         check_out = parse_date(d.get('check_out_date'))
         room_id = d.get('room_id')
         new_status = d.get('status', 'BOOKED')
+        hid = hotel_id(request)
 
         if new_status in BLOCKING_STATUSES and check_in and check_out:
-            if has_room_overlap(hotel_id(request), room_id, check_in, check_out):
+            if has_room_overlap(hid, room_id, check_in, check_out):
                 return Response({'message': 'Room is occupied in the selected dates'}, status=409)
+
+        guest = _find_or_create_guest(hid, d.get('guest_name'), d.get('guest_phone'))
 
         stay = Stay(
             id=str(uuid.uuid4()),
-            hotel_id=hotel_id(request),
+            hotel_id=hid,
             room_id=room_id,
             guest_name=d.get('guest_name', ''),
             guest_phone=d.get('guest_phone') or None,
+            guest_id=guest.id if guest else None,
             check_in_date=check_in,
             check_out_date=check_out,
             status=new_status,
@@ -308,7 +353,10 @@ class StayListCreateView(APIView):
             created_at=datetime.now(timezone.utc),
         )
         stay.save()
-        return Response(stay_data(stay), status=201)
+        data = stay_data(stay, guest)
+        if guest:
+            data['_guest'] = guest_data(guest)
+        return Response(data, status=201)
 
 
 class StayDetailView(APIView):
@@ -324,11 +372,18 @@ class StayDetailView(APIView):
             return Response({'message': 'Not found'}, status=404)
         d = request.data
         if 'room_id' in d:         stay.room_id = d['room_id']
+        guest_changed = 'guest_name' in d or 'guest_phone' in d
         if 'guest_name' in d:     stay.guest_name = d['guest_name']
         if 'guest_phone' in d:    stay.guest_phone = d['guest_phone'] or None
         if 'check_in_date' in d:  stay.check_in_date = parse_date(d['check_in_date'])
         if 'check_out_date' in d: stay.check_out_date = parse_date(d['check_out_date'])
-        if 'status' in d:         stay.status = d['status']
+        if 'status' in d:
+            stay.status = d['status']
+            # При чекауте дата выезда сдвигается на сегодня, если она в будущем
+            if d['status'] == 'CHECKED_OUT':
+                now = datetime.now(timezone.utc)
+                if stay.check_out_date and stay.check_out_date > now:
+                    stay.check_out_date = now
         if 'price_per_night' in d:          stay.price_per_night = Decimal(str(d['price_per_night']))
         if 'weekly_discount_amount' in d:   stay.weekly_discount_amount = Decimal(str(d['weekly_discount_amount']))
         if 'manual_adjustment_amount' in d: stay.manual_adjustment_amount = Decimal(str(d['manual_adjustment_amount']))
@@ -340,8 +395,14 @@ class StayDetailView(APIView):
             if has_room_overlap(hotel_id(request), stay.room_id, stay.check_in_date, stay.check_out_date, exclude_id=pk):
                 return Response({'message': 'Room is occupied in the selected dates'}, status=409)
 
+        if guest_changed:
+            guest = _find_or_create_guest(hotel_id(request), stay.guest_name, stay.guest_phone)
+            stay.guest_id = guest.id if guest else None
+        else:
+            guest = Guest.objects.filter(id=stay.guest_id).first() if stay.guest_id else None
+
         stay.save()
-        return Response(stay_data(stay))
+        return Response(stay_data(stay, guest))
 
     def delete(self, request, pk):
         stay = self._get(request, pk)
@@ -361,7 +422,6 @@ def payment_data(p):
     return {
         'id': p.id, 'hotel_id': p.hotel_id, 'stay_id': p.stay_id,
         'paid_at': fmt_dt(p.paid_at), 'method': p.method,
-        'custom_method_label': p.custom_method_label,
         'amount': to_float(p.amount), 'comment': p.comment,
         'created_at': fmt_dt(p.created_at),
     }
@@ -379,8 +439,7 @@ class PaymentListCreateView(APIView):
             hotel_id=hotel_id(request),
             stay_id=d.get('stay_id'),
             paid_at=parse_date(d.get('paid_at')),
-            method=d.get('method', 'OTHER'),
-            custom_method_label=d.get('custom_method_label') or None,
+            method=d.get('method', ''),
             amount=Decimal(str(d.get('amount', 0))),
             comment=d.get('comment') or None,
             created_at=datetime.now(timezone.utc),
@@ -401,10 +460,9 @@ class PaymentDetailView(APIView):
         if not p:
             return Response({'message': 'Not found'}, status=404)
         d = request.data
-        if 'paid_at' in d:              p.paid_at = parse_date(d['paid_at'])
-        if 'method' in d:               p.method = d['method']
-        if 'custom_method_label' in d:  p.custom_method_label = d['custom_method_label'] or None
-        if 'amount' in d:               p.amount = Decimal(str(d['amount']))
+        if 'paid_at' in d:  p.paid_at = parse_date(d['paid_at'])
+        if 'method' in d:   p.method = d['method']
+        if 'amount' in d:   p.amount = Decimal(str(d['amount']))
         if 'comment' in d:              p.comment = d['comment'] or None
         p.save()
         return Response(payment_data(p))
@@ -435,7 +493,7 @@ def expense_data(e):
     return {
         'id': e.id, 'hotel_id': e.hotel_id,
         'spent_at': fmt_dt(e.spent_at), 'category': e.category,
-        'method': e.method, 'custom_method_label': e.custom_method_label,
+        'method': e.method,
         'amount': to_float(e.amount), 'comment': e.comment,
         'created_at': fmt_dt(e.created_at),
         'created_by_name': created_by_name,
@@ -456,8 +514,7 @@ class ExpenseListCreateView(APIView):
             hotel_id=hotel_id(request),
             spent_at=parse_date(d.get('spent_at')),
             category=d.get('category', 'OTHER'),
-            method=d.get('method', 'OTHER'),
-            custom_method_label=d.get('custom_method_label') or None,
+            method=d.get('method', ''),
             amount=Decimal(str(d.get('amount', 0))),
             comment=d.get('comment') or None,
             created_at=datetime.now(timezone.utc),
@@ -479,11 +536,10 @@ class ExpenseDetailView(APIView):
         if not e:
             return Response({'message': 'Not found'}, status=404)
         d = request.data
-        if 'spent_at' in d:             e.spent_at = parse_date(d['spent_at'])
-        if 'category' in d:             e.category = d['category']
-        if 'method' in d:               e.method = d['method']
-        if 'custom_method_label' in d:  e.custom_method_label = d['custom_method_label'] or None
-        if 'amount' in d:               e.amount = Decimal(str(d['amount']))
+        if 'spent_at' in d:   e.spent_at = parse_date(d['spent_at'])
+        if 'category' in d:   e.category = d['category']
+        if 'method' in d:     e.method = d['method']
+        if 'amount' in d:     e.amount = Decimal(str(d['amount']))
         if 'comment' in d:              e.comment = d['comment'] or None
         e.save()
         return Response(expense_data(e))
@@ -525,8 +581,7 @@ def compute_totals(hotel_id_val, from_date, to_date):
 
     revenue_by_method = {}
     for p in payments:
-        label = p.custom_method_label or p.method
-        revenue_by_method[label] = revenue_by_method.get(label, 0) + float(p.amount)
+        revenue_by_method[p.method] = revenue_by_method.get(p.method, 0) + float(p.amount)
 
     expenses_by_category = {}
     for e in expenses:
@@ -557,10 +612,23 @@ def compute_totals(hotel_id_val, from_date, to_date):
     adr = (total_revenue / sold_nights) if sold_nights > 0 else 0
     revpar = (total_revenue / available_nights) if available_nights > 0 else 0
 
+    withdrawals = Withdrawal.objects.filter(
+        hotel_id=hotel_id_val,
+        withdrawn_at__date__gte=from_date,
+        withdrawn_at__date__lte=to_date,
+    )
+    withdrawals_by_method = {}
+    total_withdrawals = 0
+    for w in withdrawals:
+        withdrawals_by_method[w.method] = withdrawals_by_method.get(w.method, 0) + float(w.amount)
+        total_withdrawals += float(w.amount)
+
     return {
         'revenue_by_method': revenue_by_method,
         'expenses_by_category': expenses_by_category,
         'profit': profit,
+        'withdrawals_by_method': withdrawals_by_method,
+        'total_withdrawals': total_withdrawals,
         'occupancy_rate': occupancy_rate,
         'adr': adr,
         'revpar': revpar,
@@ -717,8 +785,44 @@ class UserRoleView(APIView):
         return Response({'id': pk, 'username': user.email, 'full_name': profile.full_name, 'role': role})
 
 
-class UserDeleteView(APIView):
+class UserDetailView(APIView):
     permission_classes = [IsAdmin]
+
+    def patch(self, request, pk):
+        try:
+            profile = Profile.objects.get(id=pk, hotel_id=hotel_id(request))
+            user = User.objects.get(id=pk)
+        except (Profile.DoesNotExist, User.DoesNotExist):
+            return Response({'message': 'Not found'}, status=404)
+
+        d = request.data
+        if 'full_name' in d:
+            full_name = (d['full_name'] or '').strip()
+            if not full_name:
+                return Response({'message': 'full_name required'}, status=400)
+            profile.full_name = full_name
+            profile.save(update_fields=['full_name'])
+
+        if 'username' in d:
+            username = (d['username'] or '').strip()
+            if not username:
+                return Response({'message': 'username required'}, status=400)
+            if User.objects.filter(email__iexact=username).exclude(id=pk).exists():
+                return Response({'message': 'Username already exists'}, status=409)
+            user.email = username
+            user.save(update_fields=['email'])
+
+        if 'password' in d:
+            password = d['password'] or ''
+            if len(password) < 6:
+                return Response({'message': 'Password must be at least 6 characters'}, status=400)
+            user.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            user.save(update_fields=['password_hash'])
+
+        role = get_role(pk)
+        oldest = Profile.objects.filter(hotel_id=hotel_id(request)).order_by('created_at').first()
+        is_owner = oldest and pk == oldest.id
+        return Response({'id': pk, 'username': user.email, 'full_name': profile.full_name, 'role': role, 'is_owner': is_owner})
 
     def delete(self, request, pk):
         if pk == request.user.id:
@@ -852,6 +956,152 @@ class TransferDetailView(APIView):
             if not request.user.is_admin:
                 return Response({'message': 'Month is closed'}, status=403)
         t.delete()
+        return Response(status=204)
+
+
+# ─── withdrawals ──────────────────────────────────────────────────────────────
+
+def withdrawal_data(w):
+    created_by_name = None
+    if w.created_by_id:
+        try:
+            created_by_name = Profile.objects.get(id=w.created_by_id).full_name
+        except Profile.DoesNotExist:
+            pass
+    return {
+        'id': w.id, 'hotel_id': w.hotel_id,
+        'withdrawn_at': fmt_dt(w.withdrawn_at),
+        'method': w.method,
+        'amount': to_float(w.amount),
+        'comment': w.comment,
+        'created_at': fmt_dt(w.created_at),
+        'created_by_name': created_by_name,
+    }
+
+
+class WithdrawalListCreateView(APIView):
+    def get_permissions(self):
+        if self.request.method == 'POST':
+            return [IsAdmin()]
+        return super().get_permissions()
+
+    def get(self, request):
+        qs = Withdrawal.objects.filter(hotel_id=hotel_id(request)).order_by('-withdrawn_at')
+        return Response([withdrawal_data(w) for w in qs])
+
+    def post(self, request):
+        d = request.data
+        amount = Decimal(str(d.get('amount', 0)))
+        method = (d.get('method') or '').strip()
+        if not method:
+            return Response({'message': 'Method required'}, status=400)
+        if amount <= 0:
+            return Response({'message': 'Amount must be positive'}, status=400)
+        w = Withdrawal(
+            id=str(uuid.uuid4()),
+            hotel_id=hotel_id(request),
+            withdrawn_at=parse_date(d.get('withdrawn_at')),
+            method=method,
+            amount=amount,
+            comment=d.get('comment') or None,
+            created_at=datetime.now(timezone.utc),
+            created_by_id=request.user.id,
+        )
+        w.save()
+        return Response(withdrawal_data(w), status=201)
+
+
+class WithdrawalDetailView(APIView):
+    def get_permissions(self):
+        return [IsAdmin()]
+
+    def _get(self, request, pk):
+        try:
+            return Withdrawal.objects.get(id=pk, hotel_id=hotel_id(request))
+        except Withdrawal.DoesNotExist:
+            return None
+
+    def patch(self, request, pk):
+        w = self._get(request, pk)
+        if not w:
+            return Response({'message': 'Not found'}, status=404)
+        d = request.data
+        if 'withdrawn_at' in d: w.withdrawn_at = parse_date(d['withdrawn_at'])
+        if 'method' in d:       w.method = d['method']
+        if 'amount' in d:       w.amount = Decimal(str(d['amount']))
+        if 'comment' in d:      w.comment = d['comment'] or None
+        w.save()
+        return Response(withdrawal_data(w))
+
+    def delete(self, request, pk):
+        w = self._get(request, pk)
+        if not w:
+            return Response({'message': 'Not found'}, status=404)
+        month = w.withdrawn_at.strftime('%Y-%m')
+        if MonthClosing.objects.filter(hotel_id=w.hotel_id, month=month).exists():
+            if not request.user.is_admin:
+                return Response({'message': 'Month is closed'}, status=403)
+        w.delete()
+        return Response(status=204)
+
+
+# ─── guests ───────────────────────────────────────────────────────────────────
+
+def guest_data(g):
+    return {
+        'id': g.id, 'hotel_id': g.hotel_id,
+        'name': g.name, 'phone': g.phone, 'notes': g.notes,
+        'created_at': fmt_dt(g.created_at),
+    }
+
+
+class GuestListCreateView(APIView):
+    def get(self, request):
+        q = request.query_params.get('q', '').strip()
+        qs = Guest.objects.filter(hotel_id=hotel_id(request))
+        if q:
+            qs = qs.filter(name__icontains=q)
+        return Response([guest_data(g) for g in qs.order_by('name')])
+
+    def post(self, request):
+        d = request.data
+        name = (d.get('name') or '').strip()
+        if not name:
+            return Response({'message': 'Name required'}, status=400)
+        g = Guest(
+            id=str(uuid.uuid4()),
+            hotel_id=hotel_id(request),
+            name=name,
+            phone=(d.get('phone') or '').strip(),
+            notes=(d.get('notes') or '').strip(),
+        )
+        g.save()
+        return Response(guest_data(g), status=201)
+
+
+class GuestDetailView(APIView):
+    def _get(self, request, pk):
+        try:
+            return Guest.objects.get(id=pk, hotel_id=hotel_id(request))
+        except Guest.DoesNotExist:
+            return None
+
+    def patch(self, request, pk):
+        g = self._get(request, pk)
+        if not g:
+            return Response({'message': 'Not found'}, status=404)
+        d = request.data
+        if 'name' in d:  g.name  = (d['name'] or '').strip()
+        if 'phone' in d: g.phone = (d['phone'] or '').strip()
+        if 'notes' in d: g.notes = (d['notes'] or '').strip()
+        g.save()
+        return Response(guest_data(g))
+
+    def delete(self, request, pk):
+        g = self._get(request, pk)
+        if not g:
+            return Response({'message': 'Not found'}, status=404)
+        g.delete()
         return Response(status=204)
 
 

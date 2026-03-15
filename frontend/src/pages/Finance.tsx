@@ -15,13 +15,13 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Label } from "@/components/ui/label";
-import { Plus, Pencil, Search, Trash2, TrendingUp, TrendingDown, ArrowLeftRight } from "lucide-react";
+import { Plus, Pencil, Search, Trash2, TrendingUp, TrendingDown, ArrowLeftRight, Banknote } from "lucide-react";
 import { formatCurrency, formatDate, getTodayInTimeZone } from "@/lib/format";
-import { Payment, Expense, Transfer, ExpenseCategory } from "@/types";
+import { Payment, Expense, Transfer, Withdrawal, ExpenseCategory } from "@/types";
 import { ApiError } from "@/lib/api";
 
-type TxType = "payment" | "expense" | "transfer";
-type TypeFilter = "all" | "income" | "expense" | "transfer";
+type TxType = "payment" | "expense" | "transfer" | "withdrawal";
+type TypeFilter = "all" | "income" | "expense" | "transfer" | "withdrawal";
 
 interface Row {
   type: TxType;
@@ -33,7 +33,7 @@ interface Row {
   fromMethod?: string;
   toMethod?: string;
   comment: string | null;
-  raw: Payment | Expense | Transfer;
+  raw: Payment | Expense | Transfer | Withdrawal;
 }
 
 // categories built inside component using t.expenseCategory
@@ -41,10 +41,11 @@ interface Row {
 const Finance = () => {
   const { t, language } = useLanguage();
   const {
-    rooms, stays, payments, expenses, transfers,
+    rooms, stays, payments, expenses, transfers, withdrawals,
     addPayment, updatePayment, removePayment,
     addExpense, updateExpense, removeExpense,
     addTransfer, updateTransfer, removeTransfer,
+    addWithdrawal, updateWithdrawal, removeWithdrawal,
     hotel, customPaymentMethods, addCustomPaymentMethod,
   } = useData();
   const { hotelId, isAdmin } = useAuth();
@@ -117,6 +118,15 @@ const Finance = () => {
   const [trComment, setTrComment]         = useState("");
   const [trError, setTrError]             = useState<string | null>(null);
 
+  // ── withdrawal dialog ─────────────────────────────────────────────────────
+  const [wdDialog, setWdDialog]           = useState(false);
+  const [editingWd, setEditingWd]         = useState<Withdrawal | null>(null);
+  const [wdDate, setWdDate]               = useState("");
+  const [wdMethod, setWdMethod]           = useState("");
+  const [wdAmount, setWdAmount]           = useState("");
+  const [wdComment, setWdComment]         = useState("");
+  const [wdError, setWdError]             = useState<string | null>(null);
+
   // ── shared ────────────────────────────────────────────────────────────────
   const [deleteTarget, setDeleteTarget]   = useState<Row | null>(null);
   const [actionError, setActionError]     = useState<string | null>(null);
@@ -124,8 +134,8 @@ const Finance = () => {
   const [newMethodName, setNewMethodName] = useState("");
   const [addMethodError, setAddMethodError] = useState<string | null>(null);
 
-  const getPayMethod  = (p: Payment) => p.custom_method_label || p.method;
-  const getExpMethod  = (e: Expense) => e.custom_method_label || e.method;
+  const getPayMethod  = (p: Payment) => p.method;
+  const getExpMethod  = (e: Expense) => e.method;
 
   const getStayInfo = useCallback((stayId: string) => {
     const stay = stays.find(s => s.id === stayId);
@@ -144,6 +154,9 @@ const Finance = () => {
     for (const tr of transfers) {
       out[tr.from_method] = (out[tr.from_method] || 0) + tr.amount;
       inc[tr.to_method]   = (inc[tr.to_method]   || 0) + tr.amount;
+    }
+    for (const w of withdrawals) {
+      out[w.method] = (out[w.method] || 0) + w.amount;
     }
     const bal: Record<string, number> = {};
     const all = new Set([...Object.keys(inc), ...Object.keys(out)]);
@@ -180,8 +193,14 @@ const Finance = () => {
       fromMethod: tr.from_method, toMethod: tr.to_method,
       comment: tr.comment, raw: tr,
     }));
-    return [...pRows, ...eRows, ...trRows];
-  }, [payments, expenses, transfers, getStayInfo]);
+    const wRows: Row[] = withdrawals.map(w => ({
+      type: "withdrawal", id: w.id, date: w.withdrawn_at,
+      label: w.method,
+      amount: w.amount, method: w.method,
+      comment: w.comment, raw: w,
+    }));
+    return [...pRows, ...eRows, ...trRows, ...wRows];
+  }, [payments, expenses, transfers, withdrawals, getStayInfo]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -195,9 +214,10 @@ const Finance = () => {
             if (row.method !== activeTab) return false;
           }
         }
-        if (typeFilter === "income"   && row.type !== "payment")  return false;
-        if (typeFilter === "expense"  && row.type !== "expense")  return false;
-        if (typeFilter === "transfer" && row.type !== "transfer") return false;
+        if (typeFilter === "income"     && row.type !== "payment")    return false;
+        if (typeFilter === "expense"    && row.type !== "expense")    return false;
+        if (typeFilter === "transfer"   && row.type !== "transfer")   return false;
+        if (typeFilter === "withdrawal" && row.type !== "withdrawal") return false;
         const rowDate = row.date.slice(0, 10);
         if (dateFrom && rowDate < dateFrom) return false;
         if (dateTo   && rowDate > dateTo)   return false;
@@ -218,8 +238,11 @@ const Finance = () => {
   const totals = useMemo(() => {
     let inc = 0, out = 0;
     for (const row of filtered) {
-      if (row.type === "payment") inc += row.amount;
-      else if (row.type === "expense") out += row.amount;
+      if (row.type === "payment") {
+        if (row.amount >= 0) inc += row.amount;
+        else out += Math.abs(row.amount);
+      }
+      else if (row.type === "expense" || row.type === "withdrawal") out += row.amount;
       // transfers: if a specific register tab is active, count direction
       else if (row.type === "transfer" && activeTab !== "all") {
         if (row.toMethod === activeTab)   inc += row.amount;
@@ -260,7 +283,7 @@ const Finance = () => {
       id: editingPay?.id || `pay-${Date.now()}`,
       hotel_id: hotelId || "", stay_id: payStayId,
       paid_at: new Date(`${payDate}T12:00:00Z`).toISOString(),
-      method: "OTHER", custom_method_label: payMethod,
+      method: payMethod,
       amount, comment: payComment,
     };
     editingPay ? updatePayment(payload) : addPayment(payload);
@@ -302,7 +325,7 @@ const Finance = () => {
       id: editingExp?.id || `exp-${Date.now()}`,
       hotel_id: hotelId || "",
       spent_at: new Date(`${expDate}T12:00:00Z`).toISOString(),
-      category: expCategory, method: "OTHER", custom_method_label: expMethod,
+      category: expCategory, method: expMethod,
       amount, comment: expComment,
     };
     editingExp ? updateExpense(payload) : addExpense(payload);
@@ -353,13 +376,54 @@ const Finance = () => {
     }
   };
 
+  // ── withdrawal handlers ───────────────────────────────────────────────────
+  const openAddWd = () => {
+    setEditingWd(null);
+    setWdDate(getTodayInTimeZone(hotel.timezone));
+    setWdMethod(activeTab !== "all" ? activeTab : (customPaymentMethods[0]?.name || ""));
+    setWdAmount(""); setWdComment(""); setWdError(null);
+    setWdDialog(true);
+  };
+  const openEditWd = (w: Withdrawal) => {
+    setEditingWd(w);
+    setWdDate(w.withdrawn_at.split("T")[0]);
+    setWdMethod(w.method);
+    setWdAmount(String(w.amount)); setWdComment(w.comment || ""); setWdError(null);
+    setWdDialog(true);
+  };
+  const wdLocked = editingWd ? isDateLocked(editingWd.withdrawn_at) : isDateLocked(wdDate);
+  const handleSaveWd = async () => {
+    const amount = Number(wdAmount);
+    if (!wdDate) { setWdError(t.validation.required); return; }
+    if (!wdMethod) { setWdError(t.finance.selectRegister); return; }
+    if (!amount || amount <= 0) { setWdError(t.validation.amountPositive); return; }
+    const oldAmount = editingWd && editingWd.method === wdMethod ? editingWd.amount : 0;
+    const available = (balanceByMethod[wdMethod] ?? 0) + oldAmount;
+    if (amount > available) {
+      setWdError(`${t.finance.insufficientFunds} «${wdMethod}». ${t.finance.available}: ${formatCurrency(available, locale, t.common.currency)}`);
+      return;
+    }
+    const withdrawn_at = new Date(`${wdDate}T12:00:00Z`).toISOString();
+    try {
+      if (editingWd) {
+        await updateWithdrawal({ ...editingWd, withdrawn_at, method: wdMethod, amount, comment: wdComment });
+      } else {
+        await addWithdrawal({ withdrawn_at, method: wdMethod, amount, comment: wdComment });
+      }
+      setWdDialog(false);
+    } catch {
+      setWdError(t.validation.saveFailed);
+    }
+  };
+
   // ── delete ────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
     if (!deleteTarget) return;
     try {
       if (deleteTarget.type === "payment") await removePayment(deleteTarget.id);
       else if (deleteTarget.type === "expense") await removeExpense(deleteTarget.id);
-      else await removeTransfer(deleteTarget.id);
+      else if (deleteTarget.type === "transfer") await removeTransfer(deleteTarget.id);
+      else await removeWithdrawal(deleteTarget.id);
       setDeleteTarget(null); setActionError(null);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -392,6 +456,11 @@ const Finance = () => {
           <Button variant="outline" onClick={openAddTr}>
             <ArrowLeftRight className="mr-1 h-4 w-4 text-blue-500" />{t.finance.transfer}
           </Button>
+          {isAdmin && (
+            <Button variant="outline" onClick={openAddWd}>
+              <Banknote className="mr-1 h-4 w-4 text-amber-500" />{t.finance.withdrawProfit}
+            </Button>
+          )}
           <Button onClick={openAddPay}>
             <TrendingUp className="mr-1 h-4 w-4" />{t.finance.income}
           </Button>
@@ -441,6 +510,7 @@ const Finance = () => {
             <SelectItem value="income">{t.finance.onlyIncome}</SelectItem>
             <SelectItem value="expense">{t.finance.onlyExpense}</SelectItem>
             <SelectItem value="transfer">{t.finance.onlyTransfer}</SelectItem>
+            <SelectItem value="withdrawal">{t.finance.onlyWithdrawal}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={sortKey} onValueChange={setSortKey}>
@@ -502,10 +572,13 @@ const Finance = () => {
             </TableHeader>
             <TableBody>
               {pagedRows.map(row => {
-                const isPayment  = row.type === "payment";
-                const isTransfer = row.type === "transfer";
+                const isPayment    = row.type === "payment";
+                const isRefund    = isPayment && row.amount < 0;
+                const isTransfer  = row.type === "transfer";
+                const isWithdrawal = row.type === "withdrawal";
                 const locked = isDateLocked(row.date);
-                const createdByName = row.type === "expense" ? (row.raw as Expense).created_by_name : undefined;
+                const createdByName = row.type === "expense" ? (row.raw as Expense).created_by_name
+                  : row.type === "withdrawal" ? (row.raw as Withdrawal).created_by_name : undefined;
                 // for transfer: show direction relative to active tab
                 const trIsOut = isTransfer && activeTab !== "all" && row.fromMethod === activeTab;
                 const trIsIn  = isTransfer && activeTab !== "all" && row.toMethod   === activeTab;
@@ -513,17 +586,21 @@ const Finance = () => {
                   <TableRow key={`${row.type}-${row.id}`}>
                     <TableCell className="text-muted-foreground text-sm">{formatDate(row.date, locale)}</TableCell>
                     <TableCell>
-                      {isPayment
-                        ? <Badge className="bg-success/15 text-success border-success/30 border">↑ {t.finance.income}</Badge>
-                        : isTransfer
-                          ? <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 border">⇄ {t.finance.transfer}</Badge>
-                          : <Badge className="bg-destructive/15 text-destructive border-destructive/30 border">↓ {t.finance.expense}</Badge>
+                      {isRefund
+                        ? <Badge className="bg-destructive/15 text-destructive border-destructive/30 border">↩ Возврат</Badge>
+                        : isPayment
+                          ? <Badge className="bg-success/15 text-success border-success/30 border">↑ {t.finance.income}</Badge>
+                          : isTransfer
+                            ? <Badge className="bg-blue-500/10 text-blue-600 border-blue-500/30 border">⇄ {t.finance.transfer}</Badge>
+                            : isWithdrawal
+                              ? <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/30 border">💵 {t.finance.withdrawal}</Badge>
+                              : <Badge className="bg-destructive/15 text-destructive border-destructive/30 border">↓ {t.finance.expense}</Badge>
                       }
                     </TableCell>
                     <TableCell className="font-medium">{row.label}</TableCell>
-                    <TableCell className={`font-bold ${isPayment || trIsIn ? "text-success" : isTransfer && !trIsIn && !trIsOut ? "text-muted-foreground" : "text-destructive"}`}>
-                      {isPayment || trIsIn ? "+" : isTransfer && !trIsIn && !trIsOut ? "" : "−"}
-                      {formatCurrency(row.amount, locale, t.common.currency)}
+                    <TableCell className={`font-bold ${isRefund ? "text-destructive" : isPayment || trIsIn ? "text-success" : isTransfer && !trIsIn && !trIsOut ? "text-muted-foreground" : "text-destructive"}`}>
+                      {isRefund ? "−" : isPayment || trIsIn ? "+" : isTransfer && !trIsIn && !trIsOut ? "" : "−"}{/* withdrawal also gets "−" via fallback */}
+                      {formatCurrency(Math.abs(row.amount), locale, t.common.currency)}
                     </TableCell>
                     <TableCell>
                       {isTransfer
@@ -542,6 +619,7 @@ const Finance = () => {
                         onClick={() => {
                           if (isPayment) openEditPay(row.raw as Payment);
                           else if (isTransfer) openEditTr(row.raw as Transfer);
+                          else if (isWithdrawal) openEditWd(row.raw as Withdrawal);
                           else openEditExp(row.raw as Expense);
                         }}>
                         <Pencil className="h-4 w-4" />
@@ -773,6 +851,58 @@ const Finance = () => {
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => setTrDialog(false)}>{t.common.cancel}</Button>
             <Button onClick={handleSaveTr} disabled={trLocked && !isAdmin}>{t.common.save}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Withdrawal dialog ── */}
+      <Dialog open={wdDialog} onOpenChange={setWdDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{editingWd ? t.finance.editWithdrawal : t.finance.newWithdrawal}</DialogTitle></DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{t.finance.date}</Label>
+                <Input type="date" value={wdDate} onChange={e => setWdDate(e.target.value)} disabled={wdLocked && !isAdmin} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t.finance.register}</Label>
+                <Select value={wdMethod} onValueChange={v => { setWdMethod(v); setWdError(null); }}>
+                  <SelectTrigger disabled={wdLocked && !isAdmin}><SelectValue placeholder={t.finance.selectRegister} /></SelectTrigger>
+                  <SelectContent>
+                    {customPaymentMethods.map(m => {
+                      const bal = balanceByMethod[m.name] ?? 0;
+                      return (
+                        <SelectItem key={m.id} value={m.name} disabled={bal <= 0 && m.name !== editingWd?.method}>
+                          {m.name}
+                          <span className={`ml-2 text-xs ${bal > 0 ? "text-success" : "text-destructive"}`}>
+                            {formatCurrency(bal, locale, t.common.currency)}
+                          </span>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                {wdMethod && (
+                  <p className={`text-xs ${(balanceByMethod[wdMethod] ?? 0) > 0 ? "text-muted-foreground" : "text-destructive font-medium"}`}>
+                    {t.finance.registerBalance}: {formatCurrency(balanceByMethod[wdMethod] ?? 0, locale, t.common.currency)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>{t.payments.amount}</Label>
+              <Input type="number" value={wdAmount} onChange={e => setWdAmount(e.target.value)} disabled={wdLocked && !isAdmin} />
+            </div>
+            <div className="space-y-2">
+              <Label>{t.payments.comment}</Label>
+              <Input value={wdComment} onChange={e => setWdComment(e.target.value)} disabled={wdLocked && !isAdmin} />
+            </div>
+            {wdError && <p className="text-sm text-destructive">{wdError}</p>}
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setWdDialog(false)}>{t.common.cancel}</Button>
+            <Button onClick={handleSaveWd} disabled={wdLocked && !isAdmin}>{t.common.save}</Button>
           </div>
         </DialogContent>
       </Dialog>

@@ -15,6 +15,8 @@ import Stays from "./pages/Stays";
 import Finance from "./pages/Finance";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Guests from "./pages/Guests";
+import GuestReports from "./pages/GuestReports";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 
@@ -48,6 +50,8 @@ const App = () => (
                     <Route path="/payments" element={<Navigate to="/finance" replace />} />
                     <Route path="/expenses" element={<Navigate to="/finance" replace />} />
                     <Route path="/reports" element={<AdminRoute><Reports /></AdminRoute>} />
+                    <Route path="/guests" element={<Guests />} />
+                    <Route path="/guest-reports" element={<AdminRoute><GuestReports /></AdminRoute>} />
                     <Route path="/settings" element={<Settings />} />
                     <Route path="*" element={<NotFound />} />
                   </Route>
