@@ -121,7 +121,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         apiFetch<MonthClosing[]>('/month-closings'),
         usersPromise,
         customMethodsPromise,
-        apiFetch<Guest[]>('/guests'),
+        apiFetch<Guest[]>('/guests').catch(() => [] as Guest[]),
       ]);
 
       setHotelState(hotelRes || EMPTY_HOTEL);
