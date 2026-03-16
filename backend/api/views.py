@@ -422,6 +422,7 @@ def payment_data(p):
     return {
         'id': p.id, 'hotel_id': p.hotel_id, 'stay_id': p.stay_id,
         'paid_at': fmt_dt(p.paid_at), 'method': p.method,
+        'custom_method_label': p.custom_method_label,
         'amount': to_float(p.amount), 'comment': p.comment,
         'created_at': fmt_dt(p.created_at),
     }

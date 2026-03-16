@@ -134,8 +134,8 @@ const Finance = () => {
   const [newMethodName, setNewMethodName] = useState("");
   const [addMethodError, setAddMethodError] = useState<string | null>(null);
 
-  const getPayMethod  = (p: Payment) => p.method;
-  const getExpMethod  = (e: Expense) => e.method;
+  const getPayMethod  = (p: Payment) => (p.method === 'OTHER' && p.custom_method_label) ? p.custom_method_label : p.method;
+  const getExpMethod  = (e: Expense) => (e.method === 'OTHER' && e.custom_method_label) ? e.custom_method_label : e.method;
 
   const getStayInfo = useCallback((stayId: string) => {
     const stay = stays.find(s => s.id === stayId);
