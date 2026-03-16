@@ -116,12 +116,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         apiFetch<Stay[]>('/stays'),
         apiFetch<Payment[]>('/payments'),
         apiFetch<Expense[]>('/expenses'),
-        apiFetch<Transfer[]>('/transfers'),
-        apiFetch<Withdrawal[]>('/withdrawals'),
-        apiFetch<MonthClosing[]>('/month-closings'),
+        apiFetch<Transfer[]>('/transfers').catch(() => [] as Transfer[]),
+        apiFetch<Withdrawal[]>('/withdrawals').catch(() => [] as Withdrawal[]),
+        apiFetch<MonthClosing[]>('/month-closings').catch(() => [] as MonthClosing[]),
         usersPromise,
         customMethodsPromise,
-        apiFetch<Guest[]>('/guests'),
+        apiFetch<Guest[]>('/guests').catch(() => [] as Guest[]),
       ]);
 
       setHotelState(hotelRes || EMPTY_HOTEL);

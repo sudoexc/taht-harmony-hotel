@@ -66,6 +66,7 @@ export interface Payment {
   stay_id: string;
   paid_at: string;
   method: string;
+  custom_method_label?: string | null;
   amount: number;
   comment: string;
 }
@@ -76,6 +77,7 @@ export interface Expense {
   spent_at: string;
   category: ExpenseCategory;
   method: string;
+  custom_method_label?: string | null;
   amount: number;
   comment: string;
   created_by_name?: string | null;

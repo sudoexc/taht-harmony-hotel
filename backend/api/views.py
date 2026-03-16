@@ -422,6 +422,7 @@ def payment_data(p):
     return {
         'id': p.id, 'hotel_id': p.hotel_id, 'stay_id': p.stay_id,
         'paid_at': fmt_dt(p.paid_at), 'method': p.method,
+        'custom_method_label': p.custom_method_label,
         'amount': to_float(p.amount), 'comment': p.comment,
         'created_at': fmt_dt(p.created_at),
     }
@@ -494,6 +495,7 @@ def expense_data(e):
         'id': e.id, 'hotel_id': e.hotel_id,
         'spent_at': fmt_dt(e.spent_at), 'category': e.category,
         'method': e.method,
+        'custom_method_label': e.custom_method_label,
         'amount': to_float(e.amount), 'comment': e.comment,
         'created_at': fmt_dt(e.created_at),
         'created_by_name': created_by_name,
@@ -581,7 +583,8 @@ def compute_totals(hotel_id_val, from_date, to_date):
 
     revenue_by_method = {}
     for p in payments:
-        revenue_by_method[p.method] = revenue_by_method.get(p.method, 0) + float(p.amount)
+        key = p.custom_method_label if p.method == 'OTHER' and p.custom_method_label else p.method
+        revenue_by_method[key] = revenue_by_method.get(key, 0) + float(p.amount)
 
     expenses_by_category = {}
     for e in expenses:
