@@ -37,11 +37,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     }
 
     for (const p of payments) {
-      const label = p.method;
+      const label = (p.method === 'OTHER' && p.custom_method_label) ? p.custom_method_label : p.method;
       income[label] = (income[label] || 0) + p.amount;
     }
     for (const e of expenses) {
-      const label = e.method;
+      const label = (e.method === 'OTHER' && e.custom_method_label) ? e.custom_method_label : e.method;
       outcome[label] = (outcome[label] || 0) + e.amount;
     }
     for (const tr of transfers) {
