@@ -406,7 +406,7 @@ const Stays = () => {
     const active   = stays.filter(s => s.status === 'CHECKED_IN');
     const booked   = stays.filter(s => s.status === 'BOOKED');
     const totalDue = stays
-      .filter(s => s.status === 'CHECKED_IN' || s.status === 'BOOKED')
+      .filter(s => s.status === 'CHECKED_IN' || s.status === 'CHECKED_OUT')
       .reduce((sum, stay) => {
         const total = getStayTotal(stay);
         const paid  = getStayPaid(stay.id);
