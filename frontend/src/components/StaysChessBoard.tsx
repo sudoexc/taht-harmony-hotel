@@ -76,7 +76,7 @@ export function StaysChessBoard({ rooms, stays, todayStr, locale, labels, onOpen
     while (i < dates.length) {
       const d = dates[i];
       const stay = stays.find(
-        (s) => s.room_id === roomId && s.check_in_date <= d && s.check_out_date > d,
+        (s) => s.status !== 'CANCELLED' && s.room_id === roomId && s.check_in_date <= d && s.check_out_date > d,
       );
       if (stay) {
         let span = 1;

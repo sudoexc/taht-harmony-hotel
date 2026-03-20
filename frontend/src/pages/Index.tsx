@@ -36,7 +36,7 @@ const Dashboard = () => {
   // Outstanding dues (all active/booked stays)
   const totalOutstanding = useMemo(() =>
     stays
-      .filter(s => s.status === 'CHECKED_IN' || s.status === 'BOOKED')
+      .filter(s => s.status === 'CHECKED_IN' || s.status === 'CHECKED_OUT')
       .reduce((sum, stay) => {
         const total = getStayTotal(stay);
         const paid = payments.filter(p => p.stay_id === stay.id).reduce((s, p) => s + p.amount, 0);
