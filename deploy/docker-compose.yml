@@ -1,0 +1,22 @@
+# /opt/natus/docker-compose.yml — прод Natus на общем боксе.
+# Сеть medbook_default внешняя: там живут nginx-ингресс и общий postgres.
+services:
+  natus-api:
+    build: ./app/backend
+    env_file: ./api.env
+    restart: unless-stopped
+    networks: [medbook_default]
+
+  natus-web:
+    build: ./app/frontend
+    restart: unless-stopped
+    networks: [medbook_default]
+
+  natus-landing:
+    build: ./landing
+    restart: unless-stopped
+    networks: [medbook_default]
+
+networks:
+  medbook_default:
+    external: true
