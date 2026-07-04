@@ -1,15 +1,16 @@
 import uuid
 import bcrypt
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, F
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import ValidationError
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import User, Hotel, Profile, UserRole, Room, Stay, Payment, Expense, MonthClosing, CustomPaymentMethod, Transfer, HotelSettings, Withdrawal, Guest
@@ -24,6 +25,7 @@ def make_token(user, profile, role):
     token['email'] = user.email
     token['hotel_id'] = profile.hotel_id
     token['role'] = role
+    token['tv'] = user.token_version
     return str(token)
 
 
@@ -40,7 +42,7 @@ def set_auth_cookie(response, token):
         httponly=True,
         secure=secure,
         samesite='None' if secure else 'Lax',
-        max_age=7 * 24 * 3600,
+        max_age=int(settings.SIMPLE_JWT['ACCESS_TOKEN_LIFETIME'].total_seconds()),
         path='/',
     )
 
@@ -68,6 +70,26 @@ def to_float(val):
     if val is None:
         return 0
     return float(val)
+
+
+def parse_decimal(val, field):
+    """Число из request.data → Decimal; кривой ввод — 400, а не 500."""
+    try:
+        return Decimal(str(val if val not in (None, '') else 0))
+    except (InvalidOperation, ValueError):
+        raise ValidationError({field: 'Invalid number'})
+
+
+def apply_paging(request, qs):
+    """Опциональные ?limit=&offset= на списках; без limit — как раньше, всё."""
+    try:
+        limit = int(request.query_params.get('limit', 0))
+        offset = int(request.query_params.get('offset', 0))
+    except ValueError:
+        raise ValidationError({'paging': 'limit/offset must be integers'})
+    if limit > 0:
+        return qs[offset:offset + limit]
+    return qs
 
 
 # ─── auth ─────────────────────────────────────────────────────────────────────
@@ -272,7 +294,7 @@ class RoomListCreateView(APIView):
             floor=int(d.get('floor', 0)),
             room_type=d.get('room_type', 'SINGLE'),
             capacity=int(d.get('capacity', 1)),
-            base_price=Decimal(str(d.get('base_price', 0))),
+            base_price=parse_decimal(d.get('base_price', 0), 'base_price'),
             active=d.get('active', True),
             notes=d.get('notes') or None,
             created_at=datetime.now(timezone.utc),
@@ -352,9 +374,12 @@ def _find_or_create_guest(hotel_id_val, name, phone):
 def parse_date(val):
     if not val:
         return None
-    if 'T' in str(val):
-        return datetime.fromisoformat(str(val).replace('Z', '+00:00'))
-    return datetime.strptime(str(val), '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    try:
+        if 'T' in str(val):
+            return datetime.fromisoformat(str(val).replace('Z', '+00:00'))
+        return datetime.strptime(str(val), '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise ValidationError({'date': f'Invalid date: {val}'})
 
 
 BLOCKING_STATUSES = ['CHECKED_IN', 'BOOKED']
@@ -376,7 +401,7 @@ def has_room_overlap(hotel_id_val, room_id, check_in, check_out, exclude_id=None
 
 class StayListCreateView(APIView):
     def get(self, request):
-        stays = list(Stay.objects.filter(hotel_id=hotel_id(request)).order_by('-created_at'))
+        stays = list(apply_paging(request, Stay.objects.filter(hotel_id=hotel_id(request)).order_by('-created_at')))
         guest_ids = {s.guest_id for s in stays if s.guest_id}
         guests_map = {g.id: g for g in Guest.objects.filter(id__in=guest_ids)}
         return Response([stay_data(s, guests_map.get(s.guest_id)) for s in stays])
@@ -405,10 +430,10 @@ class StayListCreateView(APIView):
             check_in_date=check_in,
             check_out_date=check_out,
             status=new_status,
-            price_per_night=Decimal(str(d.get('price_per_night', 0))),
-            weekly_discount_amount=Decimal(str(d.get('weekly_discount_amount', 0))),
-            manual_adjustment_amount=Decimal(str(d.get('manual_adjustment_amount', 0))),
-            deposit_expected=Decimal(str(d.get('deposit_expected', 0))),
+            price_per_night=parse_decimal(d.get('price_per_night', 0), 'price_per_night'),
+            weekly_discount_amount=parse_decimal(d.get('weekly_discount_amount', 0), 'weekly_discount_amount'),
+            manual_adjustment_amount=parse_decimal(d.get('manual_adjustment_amount', 0), 'manual_adjustment_amount'),
+            deposit_expected=parse_decimal(d.get('deposit_expected', 0), 'deposit_expected'),
             comment=d.get('comment') or None,
             created_at=datetime.now(timezone.utc),
         )
@@ -444,10 +469,10 @@ class StayDetailView(APIView):
                 now = datetime.now(timezone.utc)
                 if stay.check_out_date and stay.check_out_date > now:
                     stay.check_out_date = now
-        if 'price_per_night' in d:          stay.price_per_night = Decimal(str(d['price_per_night']))
-        if 'weekly_discount_amount' in d:   stay.weekly_discount_amount = Decimal(str(d['weekly_discount_amount']))
-        if 'manual_adjustment_amount' in d: stay.manual_adjustment_amount = Decimal(str(d['manual_adjustment_amount']))
-        if 'deposit_expected' in d:         stay.deposit_expected = Decimal(str(d['deposit_expected']))
+        if 'price_per_night' in d:          stay.price_per_night = parse_decimal(d['price_per_night'], 'price_per_night')
+        if 'weekly_discount_amount' in d:   stay.weekly_discount_amount = parse_decimal(d['weekly_discount_amount'], 'weekly_discount_amount')
+        if 'manual_adjustment_amount' in d: stay.manual_adjustment_amount = parse_decimal(d['manual_adjustment_amount'], 'manual_adjustment_amount')
+        if 'deposit_expected' in d:         stay.deposit_expected = parse_decimal(d['deposit_expected'], 'deposit_expected')
         if 'comment' in d:        stay.comment = d['comment'] or None
 
         # Overlap check: only for blocking statuses
@@ -490,7 +515,7 @@ def payment_data(p):
 
 class PaymentListCreateView(APIView):
     def get(self, request):
-        payments = Payment.objects.filter(hotel_id=hotel_id(request)).order_by('-paid_at')
+        payments = apply_paging(request, Payment.objects.filter(hotel_id=hotel_id(request)).order_by('-paid_at'))
         return Response([payment_data(p) for p in payments])
 
     def post(self, request):
@@ -501,7 +526,7 @@ class PaymentListCreateView(APIView):
             stay_id=d.get('stay_id'),
             paid_at=parse_date(d.get('paid_at')),
             method=d.get('method', ''),
-            amount=Decimal(str(d.get('amount', 0))),
+            amount=parse_decimal(d.get('amount', 0), 'amount'),
             comment=d.get('comment') or None,
             created_at=datetime.now(timezone.utc),
         )
@@ -523,7 +548,7 @@ class PaymentDetailView(APIView):
         d = request.data
         if 'paid_at' in d:  p.paid_at = parse_date(d['paid_at'])
         if 'method' in d:   p.method = d['method']
-        if 'amount' in d:   p.amount = Decimal(str(d['amount']))
+        if 'amount' in d:   p.amount = parse_decimal(d['amount'], 'amount')
         if 'comment' in d:              p.comment = d['comment'] or None
         p.save()
         return Response(payment_data(p))
@@ -567,7 +592,7 @@ class ExpenseListCreateView(APIView):
         qs = Expense.objects.filter(hotel_id=hotel_id(request))
         if not request.user.is_admin:
             qs = qs.filter(created_by_id=request.user.id)
-        return Response([expense_data(e) for e in qs.order_by('-spent_at')])
+        return Response([expense_data(e) for e in apply_paging(request, qs.order_by('-spent_at'))])
 
     def post(self, request):
         d = request.data
@@ -577,7 +602,7 @@ class ExpenseListCreateView(APIView):
             spent_at=parse_date(d.get('spent_at')),
             category=d.get('category', 'OTHER'),
             method=d.get('method', ''),
-            amount=Decimal(str(d.get('amount', 0))),
+            amount=parse_decimal(d.get('amount', 0), 'amount'),
             comment=d.get('comment') or None,
             created_at=datetime.now(timezone.utc),
             created_by_id=request.user.id,
@@ -601,7 +626,7 @@ class ExpenseDetailView(APIView):
         if 'spent_at' in d:   e.spent_at = parse_date(d['spent_at'])
         if 'category' in d:   e.category = d['category']
         if 'method' in d:     e.method = d['method']
-        if 'amount' in d:     e.amount = Decimal(str(d['amount']))
+        if 'amount' in d:     e.amount = parse_decimal(d['amount'], 'amount')
         if 'comment' in d:              e.comment = d['comment'] or None
         e.save()
         return Response(expense_data(e))
@@ -841,6 +866,8 @@ class UserRoleView(APIView):
             ur.save(update_fields=['role'])
         else:
             UserRole(id=str(uuid.uuid4()), user_id=pk, role=role).save()
+        # роль в JWT-клейме устарела — отзываем сессии, юзер перелогинится с новой
+        User.objects.filter(id=pk).update(token_version=F('token_version') + 1)
         try:
             user = User.objects.get(id=pk)
         except User.DoesNotExist:
@@ -880,7 +907,8 @@ class UserDetailView(APIView):
             if len(password) < 6:
                 return Response({'message': 'Password must be at least 6 characters'}, status=400)
             user.password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-            user.save(update_fields=['password_hash'])
+            user.token_version += 1  # отозвать старые сессии
+            user.save(update_fields=['password_hash', 'token_version'])
 
         role = get_role(pk)
         oldest = Profile.objects.filter(hotel_id=hotel_id(request)).order_by('created_at').first()
@@ -962,14 +990,14 @@ def transfer_data(t):
 
 class TransferListCreateView(APIView):
     def get(self, request):
-        transfers = Transfer.objects.filter(hotel_id=hotel_id(request)).order_by('-transferred_at')
+        transfers = apply_paging(request, Transfer.objects.filter(hotel_id=hotel_id(request)).order_by('-transferred_at'))
         return Response([transfer_data(t) for t in transfers])
 
     def post(self, request):
         d = request.data
         from_m = (d.get('from_method') or '').strip()
         to_m = (d.get('to_method') or '').strip()
-        amount = Decimal(str(d.get('amount', 0)))
+        amount = parse_decimal(d.get('amount', 0), 'amount')
         if not from_m or not to_m:
             return Response({'message': 'from_method and to_method required'}, status=400)
         if from_m == to_m:
@@ -1005,7 +1033,7 @@ class TransferDetailView(APIView):
         if 'transferred_at' in d: t.transferred_at = parse_date(d['transferred_at'])
         if 'from_method' in d:    t.from_method = d['from_method']
         if 'to_method' in d:      t.to_method = d['to_method']
-        if 'amount' in d:         t.amount = Decimal(str(d['amount']))
+        if 'amount' in d:         t.amount = parse_decimal(d['amount'], 'amount')
         if 'comment' in d:        t.comment = d['comment'] or None
         t.save()
         return Response(transfer_data(t))
@@ -1049,12 +1077,12 @@ class WithdrawalListCreateView(APIView):
         return super().get_permissions()
 
     def get(self, request):
-        qs = Withdrawal.objects.filter(hotel_id=hotel_id(request)).order_by('-withdrawn_at')
+        qs = apply_paging(request, Withdrawal.objects.filter(hotel_id=hotel_id(request)).order_by('-withdrawn_at'))
         return Response([withdrawal_data(w) for w in qs])
 
     def post(self, request):
         d = request.data
-        amount = Decimal(str(d.get('amount', 0)))
+        amount = parse_decimal(d.get('amount', 0), 'amount')
         method = (d.get('method') or '').strip()
         if not method:
             return Response({'message': 'Method required'}, status=400)
@@ -1091,7 +1119,7 @@ class WithdrawalDetailView(APIView):
         d = request.data
         if 'withdrawn_at' in d: w.withdrawn_at = parse_date(d['withdrawn_at'])
         if 'method' in d:       w.method = d['method']
-        if 'amount' in d:       w.amount = Decimal(str(d['amount']))
+        if 'amount' in d:       w.amount = parse_decimal(d['amount'], 'amount')
         if 'comment' in d:      w.comment = d['comment'] or None
         w.save()
         return Response(withdrawal_data(w))
@@ -1124,7 +1152,7 @@ class GuestListCreateView(APIView):
         qs = Guest.objects.filter(hotel_id=hotel_id(request))
         if q:
             qs = qs.filter(name__icontains=q)
-        return Response([guest_data(g) for g in qs.order_by('name')])
+        return Response([guest_data(g) for g in apply_paging(request, qs.order_by('name'))])
 
     def post(self, request):
         d = request.data

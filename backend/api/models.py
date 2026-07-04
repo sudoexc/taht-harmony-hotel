@@ -6,6 +6,8 @@ class User(models.Model):
     email = models.CharField(max_length=255, unique=True)
     password_hash = models.TextField(db_column='passwordHash')
     created_at = models.DateTimeField(db_column='createdAt')
+    # инкремент отзывает все выданные JWT (смена пароля/роли, удаление)
+    token_version = models.IntegerField(default=0, db_column='tokenVersion')
 
     class Meta:
         db_table = 'User'

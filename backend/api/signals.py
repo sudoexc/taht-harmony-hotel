@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import urllib.request
 import urllib.error
 
@@ -20,12 +21,7 @@ CATEGORY_LABELS = {
     'OTHER': 'Прочее',
 }
 
-def _send_telegram(group_id, text):
-    token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
-    if not token or not group_id:
-        return
-    url = f'https://api.telegram.org/bot{token}/sendMessage'
-    payload = json.dumps({'chat_id': group_id, 'text': text}).encode('utf-8')
+def _post_telegram(url, payload):
     req = urllib.request.Request(
         url, data=payload, headers={'Content-Type': 'application/json'}
     )
@@ -33,6 +29,16 @@ def _send_telegram(group_id, text):
         urllib.request.urlopen(req, timeout=5)
     except Exception as exc:
         logger.warning('Telegram notification failed: %s', exc)
+
+
+def _send_telegram(group_id, text):
+    token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
+    if not token or not group_id:
+        return
+    url = f'https://api.telegram.org/bot{token}/sendMessage'
+    payload = json.dumps({'chat_id': group_id, 'text': text}).encode('utf-8')
+    # в фоне: медленный Telegram не должен тормозить HTTP-ответ кассиру
+    threading.Thread(target=_post_telegram, args=(url, payload), daemon=True).start()
 
 
 def _get_group_id(hotel_id):

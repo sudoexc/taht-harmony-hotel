@@ -29,6 +29,17 @@ class CookieJWTAuthentication(BaseAuthentication):
             user = AuthUser(payload)
             if not user.id or not user.hotel_id:
                 raise AuthenticationFailed('Invalid token payload')
-            return (user, token)
         except TokenError as e:
             raise AuthenticationFailed(str(e))
+
+        from .models import User
+        current_version = (
+            User.objects.filter(id=user.id)
+            .values_list('token_version', flat=True)
+            .first()
+        )
+        if current_version is None:
+            raise AuthenticationFailed('User no longer exists')
+        if current_version != payload.get('tv', 0):
+            raise AuthenticationFailed('Token has been revoked')
+        return (user, token)
