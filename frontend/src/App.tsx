@@ -19,6 +19,7 @@ import Guests from "./pages/Guests";
 import GuestReports from "./pages/GuestReports";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 function AdminRoute({ children }: { children: React.ReactNode }) {
   const { isAdmin, loading } = useAuth();
@@ -42,6 +43,7 @@ const App = () => (
               <BrowserRouter basename={basename}>
                 <Routes>
                   <Route path="/login" element={<Login />} />
+                  <Route path="/register" element={<Register />} />
                   <Route element={<ProtectedLayout />}>
                     <Route path="/" element={<Index />} />
                     <Route path="/rooms" element={<Rooms />} />

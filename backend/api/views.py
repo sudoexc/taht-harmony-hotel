@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -107,6 +107,66 @@ class LoginView(APIView):
             }
         }
         resp = Response(data)
+        set_auth_cookie(resp, token)
+        return resp
+
+
+class RegisterView(APIView):
+    """Саморегистрация отеля: создаёт Hotel + владельца (ADMIN) одной транзакцией."""
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request):
+        hotel_name = (request.data.get('hotel_name') or '').strip()
+        full_name = (request.data.get('full_name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        password = (request.data.get('password') or '')
+        tz = (request.data.get('timezone') or 'Asia/Tashkent').strip()
+
+        errors = {}
+        if not hotel_name:
+            errors['hotel_name'] = 'Hotel name required'
+        if not full_name:
+            errors['full_name'] = 'Full name required'
+        if not email or '@' not in email or '.' not in email.split('@')[-1]:
+            errors['email'] = 'Valid email required'
+        if len(password) < 6:
+            errors['password'] = 'Password must be at least 6 characters'
+        if errors:
+            return Response({'message': 'Validation failed', 'errors': errors}, status=400)
+
+        if User.objects.filter(email__iexact=email).exists():
+            return Response({'message': 'Email already registered', 'errors': {'email': 'Email already registered'}}, status=409)
+
+        now = datetime.now(timezone.utc)
+        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        try:
+            with transaction.atomic():
+                hotel = Hotel.objects.create(
+                    id=str(uuid.uuid4()), name=hotel_name, timezone=tz, created_at=now,
+                )
+                user = User.objects.create(
+                    id=str(uuid.uuid4()), email=email, password_hash=password_hash, created_at=now,
+                )
+                profile = Profile.objects.create(
+                    id=user.id, full_name=full_name, hotel=hotel, created_at=now,
+                )
+                UserRole.objects.create(id=str(uuid.uuid4()), user=user, role='ADMIN')
+        except IntegrityError:
+            return Response({'message': 'Email already registered', 'errors': {'email': 'Email already registered'}}, status=409)
+
+        token = make_token(user, profile, 'ADMIN')
+        resp = Response({
+            'user': {
+                'id': user.id,
+                'username': user.email,
+                'full_name': profile.full_name,
+                'role': 'ADMIN',
+                'hotel_id': hotel.id,
+            },
+            'hotel': {'id': hotel.id, 'name': hotel.name, 'timezone': hotel.timezone},
+        }, status=201)
         set_auth_cookie(resp, token)
         return resp
 

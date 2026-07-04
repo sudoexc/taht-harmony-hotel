@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
-import { Gem, User, Lock, AlertCircle } from "lucide-react";
+import { Gem, Building2, User, Mail, Lock, AlertCircle } from "lucide-react";
 
-const Login = () => {
+const Register = () => {
   const { t } = useLanguage();
-  const { user, signIn, loading } = useAuth();
-  const [username, setUsername] = useState("");
+  const { user, signUp, loading } = useAuth();
+  const [hotelName, setHotelName] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -23,13 +25,21 @@ const Login = () => {
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
+    if (password.length < 6) {
+      setError(t.auth.passwordShort);
+      return;
+    }
     setSubmitting(true);
-    const result = await signIn(username, password);
+    const result = await signUp({ hotelName, fullName, email, password });
     if (result.error) {
-      setError(t.auth.invalid);
+      setError(result.status === 409 ? t.auth.emailTaken : t.auth.registerFailed);
     }
     setSubmitting(false);
   };
+
+  const fieldClass =
+    "pl-9 h-11 bg-muted/40 border-border/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary";
+  const labelClass = "text-xs uppercase tracking-wider text-muted-foreground font-medium";
 
   return (
     <div className="min-h-screen flex relative overflow-hidden bg-background">
@@ -54,34 +64,60 @@ const Login = () => {
             <div className="w-14 h-14 rounded-2xl gradient-gold flex items-center justify-center mb-4 glow-gold">
               <Gem className="h-6 w-6 text-white" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">{t.auth.title}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{t.auth.subtitle}</p>
+            <h1 className="text-2xl font-bold tracking-tight">{t.auth.registerTitle}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{t.auth.registerSubtitle}</p>
           </div>
 
           {/* Form card */}
           <div className="rounded-2xl border border-border/60 bg-card p-8 shadow-lg glow-gold">
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                  {t.auth.username}
-                </Label>
+                <Label className={labelClass}>{t.auth.hotelName}</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
                   <Input
                     type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    value={hotelName}
+                    onChange={(e) => setHotelName(e.target.value)}
                     required
-                    placeholder={t.auth.username}
-                    className="pl-9 h-11 bg-muted/40 border-border/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary"
+                    placeholder={t.auth.hotelName}
+                    className={fieldClass}
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-medium">
-                  {t.auth.password}
-                </Label>
+                <Label className={labelClass}>{t.auth.fullName}</Label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                  <Input
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    required
+                    placeholder={t.auth.fullName}
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className={labelClass}>{t.auth.email}</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                  <Input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder={t.auth.email}
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className={labelClass}>{t.auth.password}</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
                   <Input
@@ -89,8 +125,9 @@ const Login = () => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
+                    minLength={6}
                     placeholder={t.auth.password}
-                    className="pl-9 h-11 bg-muted/40 border-border/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary"
+                    className={fieldClass}
                   />
                 </div>
               </div>
@@ -107,14 +144,14 @@ const Login = () => {
                 className="w-full h-11 gradient-gold text-white font-semibold tracking-wide border-0 hover:opacity-90 transition-opacity glow-gold-sm mt-2"
                 disabled={submitting || loading}
               >
-                {submitting ? "..." : t.auth.signIn}
+                {submitting ? "..." : t.auth.register}
               </Button>
             </form>
 
             <p className="text-center text-sm text-muted-foreground mt-5">
-              {t.auth.noAccount}{" "}
-              <Link to="/register" className="text-primary font-medium hover:underline">
-                {t.auth.register}
+              {t.auth.haveAccount}{" "}
+              <Link to="/login" className="text-primary font-medium hover:underline">
+                {t.auth.signIn}
               </Link>
             </p>
           </div>
@@ -128,4 +165,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default Register;

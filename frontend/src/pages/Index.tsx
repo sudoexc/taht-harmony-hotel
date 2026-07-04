@@ -11,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 
 const Dashboard = () => {
   const { t, language } = useLanguage();
-  const { rooms, stays, payments, expenses, hotel } = useData();
+  const { rooms, stays, payments, expenses, hotel, loading } = useData();
   const navigate = useNavigate();
   const todayStr = getTodayInTimeZone(hotel.timezone);
   const currentMonthKey = getMonthKey(todayStr);
@@ -87,6 +87,38 @@ const Dashboard = () => {
     { label: t.dashboard.occupiedRooms, value: occupiedRoomIds.size, icon: BedDouble, accent: 'text-primary', bg: 'bg-primary/10 border-primary/20' },
     { label: t.dashboard.availableRooms, value: activeRooms.length - occupiedRoomIds.size, icon: DoorOpen, accent: 'text-success', bg: 'bg-success/10 border-success/20' },
   ];
+
+  if (!loading && rooms.length === 0) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <Card className="max-w-md w-full border-primary/20 glow-gold">
+          <CardContent className="p-8 text-center">
+            <div className="w-14 h-14 rounded-2xl gradient-gold flex items-center justify-center mx-auto mb-5 glow-gold-sm">
+              <BedDouble className="h-6 w-6 text-white" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight mb-2">{t.dashboard.welcomeTitle}</h1>
+            <p className="text-sm text-muted-foreground mb-6">{t.dashboard.welcomeText}</p>
+            <ol className="text-left text-sm space-y-3 mb-7">
+              {[t.dashboard.welcomeStep1, t.dashboard.welcomeStep2, t.dashboard.welcomeStep3].map((step, i) => (
+                <li key={i} className="flex items-center gap-3">
+                  <span className="w-6 h-6 rounded-full bg-primary/15 text-primary text-xs font-bold flex items-center justify-center shrink-0">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+            <Button
+              className="w-full h-11 gradient-gold text-white font-semibold border-0 hover:opacity-90 glow-gold-sm"
+              onClick={() => navigate('/rooms')}
+            >
+              <Plus className="mr-1 h-4 w-4" />{t.dashboard.welcomeCta}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

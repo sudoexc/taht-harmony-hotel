@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { UserRole } from '@/types';
-import { apiFetch } from '@/lib/api';
+import { apiFetch, ApiError } from '@/lib/api';
 
 interface AuthUser {
   id: string;
@@ -17,6 +17,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   signIn: (username: string, password: string) => Promise<{ error?: string }>;
+  signUp: (data: { hotelName: string; fullName: string; email: string; password: string }) => Promise<{ error?: string; status?: number }>;
   signOut: () => void;
 }
 
@@ -72,6 +73,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const signUp = async (data: { hotelName: string; fullName: string; email: string; password: string }) => {
+    setLoading(true);
+    try {
+      const res = await apiFetch<{ user: AuthUser }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          hotel_name: data.hotelName,
+          full_name: data.fullName,
+          email: data.email,
+          password: data.password,
+        }),
+      });
+
+      setUser(res.user);
+      setRole(res.user.role);
+      setHotelId(res.user.hotel_id);
+      return {};
+    } catch (error) {
+      const status = error instanceof ApiError ? error.status : undefined;
+      return { error: 'REGISTER_FAILED', status };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signOut = () => {
     apiFetch('/auth/logout', { method: 'POST' }).catch(() => undefined);
     setUser(null);
@@ -88,6 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loading,
         isAdmin: role === 'ADMIN',
         signIn,
+        signUp,
         signOut,
       }}
     >
