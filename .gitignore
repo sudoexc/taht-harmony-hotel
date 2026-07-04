@@ -33,3 +33,5 @@ Thumbs.db
 
 # Misc
 backend/seed_data.py
+.DS_Store
+.vite/

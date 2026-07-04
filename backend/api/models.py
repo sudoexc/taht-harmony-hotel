@@ -8,8 +8,7 @@ class User(models.Model):
     created_at = models.DateTimeField(db_column='createdAt')
 
     class Meta:
-        managed = False
-        db_table = '"User"'
+        db_table = 'User'
 
 
 class Hotel(models.Model):
@@ -19,8 +18,7 @@ class Hotel(models.Model):
     created_at = models.DateTimeField(db_column='createdAt')
 
     class Meta:
-        managed = False
-        db_table = '"Hotel"'
+        db_table = 'Hotel'
 
 
 class Profile(models.Model):
@@ -30,8 +28,7 @@ class Profile(models.Model):
     created_at = models.DateTimeField(db_column='createdAt', null=True)
 
     class Meta:
-        managed = False
-        db_table = '"Profile"'
+        db_table = 'Profile'
 
 
 class UserRole(models.Model):
@@ -40,8 +37,7 @@ class UserRole(models.Model):
     role = models.CharField(max_length=20)
 
     class Meta:
-        managed = False
-        db_table = '"UserRole"'
+        db_table = 'UserRole'
 
 
 class Room(models.Model):
@@ -57,8 +53,7 @@ class Room(models.Model):
     created_at = models.DateTimeField(db_column='createdAt')
 
     class Meta:
-        managed = False
-        db_table = '"Room"'
+        db_table = 'Room'
 
 
 class Stay(models.Model):
@@ -79,8 +74,7 @@ class Stay(models.Model):
     guest_id = models.CharField(max_length=36, null=True, blank=True, db_column='guestId')
 
     class Meta:
-        managed = False
-        db_table = '"Stay"'
+        db_table = 'Stay'
 
 
 class Payment(models.Model):
@@ -95,8 +89,7 @@ class Payment(models.Model):
     created_at = models.DateTimeField(db_column='createdAt')
 
     class Meta:
-        managed = False
-        db_table = '"Payment"'
+        db_table = 'Payment'
 
 
 class Expense(models.Model):
@@ -112,8 +105,7 @@ class Expense(models.Model):
     created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, db_column='createdBy', related_name='expenses')
 
     class Meta:
-        managed = False
-        db_table = '"Expense"'
+        db_table = 'Expense'
 
 
 class MonthClosing(models.Model):
@@ -124,8 +116,7 @@ class MonthClosing(models.Model):
     totals_json = models.JSONField(null=True, blank=True, db_column='totalsJson')
 
     class Meta:
-        managed = False
-        db_table = '"MonthClosing"'
+        db_table = 'MonthClosing'
         unique_together = [('hotel', 'month')]
 
 
@@ -136,8 +127,7 @@ class CustomPaymentMethod(models.Model):
     created_at = models.DateTimeField(db_column='createdAt')
 
     class Meta:
-        managed = False
-        db_table = '"CustomPaymentMethod"'
+        db_table = 'CustomPaymentMethod'
         unique_together = [('hotel', 'name')]
 
 
@@ -152,8 +142,7 @@ class Transfer(models.Model):
     created_at = models.DateTimeField(db_column='createdAt')
 
     class Meta:
-        managed = False
-        db_table = '"Transfer"'
+        db_table = 'Transfer'
 
 
 class Withdrawal(models.Model):
@@ -167,8 +156,7 @@ class Withdrawal(models.Model):
     created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, db_column='createdById', related_name='withdrawals')
 
     class Meta:
-        managed = False
-        db_table = '"Withdrawal"'
+        db_table = 'Withdrawal'
 
 
 class Guest(models.Model):
