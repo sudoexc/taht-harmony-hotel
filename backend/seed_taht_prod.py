@@ -142,7 +142,7 @@ def get_guest(name, phone):
     return guest_rows[name]
 
 # ── генерация истории 01.01–28.06 ────────────────────────────────────────────
-def make_stay(room, num, ci, nights, src, closed_month):
+def make_stay(room, num, ci, nights, src):
     co = ci + timedelta(days=nights)
     base = ROOMS[num][3]
     if src == 'Олх':      # торгуются
@@ -184,7 +184,7 @@ for num, room in rooms.items():
         occ = OCCUPANCY[cursor.month]
         if random.random() < occ:
             nights = random.choices([1, 2, 3, 4, 5, 7], weights=[25, 30, 20, 12, 8, 5])[0]
-            co = make_stay(room, num, cursor, nights, random.choice(SOURCES), True)
+            co = make_stay(room, num, cursor, nights, random.choice(SOURCES))
             cursor = co + timedelta(days=random.choices([0, 1, 2], weights=[45, 35, 20])[0])
         else:
             cursor += timedelta(days=1)

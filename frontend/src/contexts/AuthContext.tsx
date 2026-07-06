@@ -17,7 +17,7 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   signIn: (username: string, password: string) => Promise<{ error?: string }>;
-  signUp: (data: { hotelName: string; fullName: string; email: string; password: string }) => Promise<{ error?: string; status?: number }>;
+  signUp: (data: { hotelName: string; fullName: string; email: string; password: string }) => Promise<{ ok: boolean; status?: number }>;
   signOut: () => void;
 }
 
@@ -89,10 +89,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(res.user);
       setRole(res.user.role);
       setHotelId(res.user.hotel_id);
-      return {};
+      return { ok: true };
     } catch (error) {
       const status = error instanceof ApiError ? error.status : undefined;
-      return { error: 'REGISTER_FAILED', status };
+      return { ok: false, status };
     } finally {
       setLoading(false);
     }

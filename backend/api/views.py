@@ -4,6 +4,8 @@ from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Sum, Q, F
 from rest_framework.views import APIView
@@ -92,6 +94,38 @@ def apply_paging(request, qs):
     return qs
 
 
+def parse_int(val, field, default=0):
+    try:
+        return int(val if val not in (None, '') else default)
+    except (TypeError, ValueError):
+        raise ValidationError({field: 'Invalid integer'})
+
+
+def user_payload(user_id, email, full_name, role, hotel_id_val):
+    """Единый контракт auth-ответов (login/register) — фронт читает AuthUser."""
+    return {
+        'id': user_id,
+        'username': email,
+        'full_name': full_name,
+        'role': role,
+        'hotel_id': hotel_id_val,
+    }
+
+
+def create_account(email, password, full_name, hotel_id_val, role, now=None):
+    """User + Profile + UserRole одной операцией — политика пароля живёт здесь."""
+    now = now or datetime.now(timezone.utc)
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    user = User.objects.create(
+        id=str(uuid.uuid4()), email=email, password_hash=password_hash, created_at=now,
+    )
+    profile = Profile.objects.create(
+        id=user.id, full_name=full_name, hotel_id=hotel_id_val, created_at=now,
+    )
+    UserRole.objects.create(id=str(uuid.uuid4()), user=user, role=role)
+    return user, profile
+
+
 # ─── auth ─────────────────────────────────────────────────────────────────────
 
 class LoginView(APIView):
@@ -119,16 +153,7 @@ class LoginView(APIView):
 
         role = get_role(user.id)
         token = make_token(user, profile, role)
-        data = {
-            'user': {
-                'id': user.id,
-                'username': user.email,
-                'full_name': profile.full_name,
-                'role': role,
-                'hotel_id': profile.hotel_id,
-            }
-        }
-        resp = Response(data)
+        resp = Response({'user': user_payload(user.id, user.email, profile.full_name, role, profile.hotel_id)})
         set_auth_cookie(resp, token)
         return resp
 
@@ -150,43 +175,29 @@ class RegisterView(APIView):
             errors['hotel_name'] = 'Hotel name required'
         if not full_name:
             errors['full_name'] = 'Full name required'
-        if not email or '@' not in email or '.' not in email.split('@')[-1]:
+        try:
+            validate_email(email)
+        except DjangoValidationError:
             errors['email'] = 'Valid email required'
         if len(password) < 6:
             errors['password'] = 'Password must be at least 6 characters'
         if errors:
             return Response({'message': 'Validation failed', 'errors': errors}, status=400)
 
-        if User.objects.filter(email__iexact=email).exists():
-            return Response({'message': 'Email already registered', 'errors': {'email': 'Email already registered'}}, status=409)
-
         now = datetime.now(timezone.utc)
-        password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-
         try:
             with transaction.atomic():
                 hotel = Hotel.objects.create(
                     id=str(uuid.uuid4()), name=hotel_name, timezone=tz, created_at=now,
                 )
-                user = User.objects.create(
-                    id=str(uuid.uuid4()), email=email, password_hash=password_hash, created_at=now,
-                )
-                profile = Profile.objects.create(
-                    id=user.id, full_name=full_name, hotel=hotel, created_at=now,
-                )
-                UserRole.objects.create(id=str(uuid.uuid4()), user=user, role='ADMIN')
+                user, profile = create_account(email, password, full_name, hotel.id, 'ADMIN', now)
         except IntegrityError:
+            # уникальность email — авторитет за constraint'ом БД, pre-check был бы гонкой
             return Response({'message': 'Email already registered', 'errors': {'email': 'Email already registered'}}, status=409)
 
         token = make_token(user, profile, 'ADMIN')
         resp = Response({
-            'user': {
-                'id': user.id,
-                'username': user.email,
-                'full_name': profile.full_name,
-                'role': 'ADMIN',
-                'hotel_id': hotel.id,
-            },
+            'user': user_payload(user.id, user.email, profile.full_name, 'ADMIN', hotel.id),
             'hotel': {'id': hotel.id, 'name': hotel.name, 'timezone': hotel.timezone},
         }, status=201)
         set_auth_cookie(resp, token)
@@ -291,9 +302,9 @@ class RoomListCreateView(APIView):
             id=str(uuid.uuid4()),
             hotel_id=hotel_id(request),
             number=d.get('number', ''),
-            floor=int(d.get('floor', 0)),
+            floor=parse_int(d.get('floor'), 'floor'),
             room_type=d.get('room_type', 'SINGLE'),
-            capacity=int(d.get('capacity', 1)),
+            capacity=parse_int(d.get('capacity'), 'capacity', default=1),
             base_price=parse_decimal(d.get('base_price', 0), 'base_price'),
             active=d.get('active', True),
             notes=d.get('notes') or None,
@@ -316,9 +327,12 @@ class RoomDetailView(APIView):
             return Response({'message': 'Not found'}, status=404)
         d = request.data
         for field, val in [
-            ('number', d.get('number')), ('floor', d.get('floor')),
-            ('room_type', d.get('room_type')), ('capacity', d.get('capacity')),
-            ('base_price', d.get('base_price')), ('active', d.get('active')),
+            ('number', d.get('number')),
+            ('floor', parse_int(d.get('floor'), 'floor') if d.get('floor') is not None else None),
+            ('room_type', d.get('room_type')),
+            ('capacity', parse_int(d.get('capacity'), 'capacity') if d.get('capacity') is not None else None),
+            ('base_price', parse_decimal(d.get('base_price'), 'base_price') if d.get('base_price') is not None else None),
+            ('active', d.get('active')),
             ('notes', d.get('notes')),
         ]:
             if val is not None:
@@ -828,20 +842,14 @@ class UserListCreateView(APIView):
             return Response({'message': 'All fields required'}, status=400)
         if len(password) < 6:
             return Response({'message': 'Password must be at least 6 characters'}, status=400)
-        if User.objects.filter(email__iexact=username).exists():
+
+        try:
+            with transaction.atomic():
+                user, profile = create_account(username, password, full_name, hotel_id(request), role)
+        except IntegrityError:
             return Response({'message': 'Username already exists'}, status=409)
 
-        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        uid = str(uuid.uuid4())
-        now = datetime.now(timezone.utc)
-
-        user = User(id=uid, email=username, password_hash=hashed, created_at=now)
-        user.save()
-        profile = Profile(id=uid, full_name=full_name, hotel_id=hotel_id(request), created_at=now)
-        profile.save()
-        UserRole(id=str(uuid.uuid4()), user_id=uid, role=role).save()
-
-        return Response({'id': uid, 'username': username, 'full_name': full_name, 'role': role}, status=201)
+        return Response({'id': user.id, 'username': user.email, 'full_name': profile.full_name, 'role': role}, status=201)
 
 
 class UserRoleView(APIView):

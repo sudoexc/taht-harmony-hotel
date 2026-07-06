@@ -31,7 +31,7 @@ const Register = () => {
     }
     setSubmitting(true);
     const result = await signUp({ hotelName, fullName, email, password });
-    if (result.error) {
+    if (!result.ok) {
       setError(result.status === 409 ? t.auth.emailTaken : t.auth.registerFailed);
     }
     setSubmitting(false);
@@ -40,6 +40,13 @@ const Register = () => {
   const fieldClass =
     "pl-9 h-11 bg-muted/40 border-border/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary";
   const labelClass = "text-xs uppercase tracking-wider text-muted-foreground font-medium";
+
+  const fields = [
+    { label: t.auth.hotelName, Icon: Building2, type: "text", value: hotelName, set: setHotelName },
+    { label: t.auth.fullName, Icon: User, type: "text", value: fullName, set: setFullName },
+    { label: t.auth.email, Icon: Mail, type: "email", value: email, set: setEmail },
+    { label: t.auth.password, Icon: Lock, type: "password", value: password, set: setPassword, minLength: 6 },
+  ];
 
   return (
     <div className="min-h-screen flex relative overflow-hidden bg-background">
@@ -71,66 +78,23 @@ const Register = () => {
           {/* Form card */}
           <div className="rounded-2xl border border-border/60 bg-card p-8 shadow-lg glow-gold">
             <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <Label className={labelClass}>{t.auth.hotelName}</Label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
-                  <Input
-                    type="text"
-                    value={hotelName}
-                    onChange={(e) => setHotelName(e.target.value)}
-                    required
-                    placeholder={t.auth.hotelName}
-                    className={fieldClass}
-                  />
+              {fields.map(({ label, Icon, type, value, set, minLength }) => (
+                <div key={label} className="space-y-2">
+                  <Label className={labelClass}>{label}</Label>
+                  <div className="relative">
+                    <Icon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                    <Input
+                      type={type}
+                      value={value}
+                      onChange={(e) => set(e.target.value)}
+                      required
+                      minLength={minLength}
+                      placeholder={label}
+                      className={fieldClass}
+                    />
+                  </div>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className={labelClass}>{t.auth.fullName}</Label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
-                  <Input
-                    type="text"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                    placeholder={t.auth.fullName}
-                    className={fieldClass}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className={labelClass}>{t.auth.email}</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    placeholder={t.auth.email}
-                    className={fieldClass}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className={labelClass}>{t.auth.password}</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    placeholder={t.auth.password}
-                    className={fieldClass}
-                  />
-                </div>
-              </div>
+              ))}
 
               {error && (
                 <div className="flex items-center gap-2 text-sm text-destructive bg-destructive/8 rounded-lg px-3 py-2.5 border border-destructive/20">

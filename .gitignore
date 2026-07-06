@@ -35,3 +35,6 @@ Thumbs.db
 backend/seed_data.py
 .DS_Store
 .vite/
+backend/.venv/
+__pycache__/
+*.pyc
